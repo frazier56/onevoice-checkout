@@ -1,0 +1,9 @@
+{
+  "name": "onevoice-checkout",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "stripe": "^16.12.0"
+  }
+}
