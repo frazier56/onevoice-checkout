@@ -190,7 +190,7 @@ export default async function handler(req, res) {
       await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     }
 
-    return res.status(200).json({ received: true, provisioned: prov.provisioned, userCreated: prov.userCreated || false, forwarded: !!url });
+    return res.status(200).json({ received: true, provisioned: prov.provisioned, provision_reason: prov.reason || '', userCreated: prov.userCreated || false, user_reason: prov.userReason || '', forwarded: !!url });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
