@@ -28,6 +28,10 @@ const V_CONV = '2021-04-15';
 const ORDERS_LOCATION_ID = process.env.GHL_ORDERS_LOCATION_ID || 'VkZwS3nGWMX06NRwLxJ8';
 const ORDERS_PIPELINE_NAME = process.env.GHL_ORDERS_PIPELINE_NAME || 'New Orders';
 const LOGIN_URL = process.env.GHL_LOGIN_URL || 'https://app.gohighlevel.com/';
+// Provisioning (create sub-account + user) uses the AGENCY token.
+// Fulfillment (contact + email + pipeline card) hits LOCATION-level endpoints,
+// which an agency token can't access - so those use a LOCATION-level token.
+const LOCATION_TOKEN = process.env.GHL_LOCATION_TOKEN || process.env.GHL_AGENCY_TOKEN;
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
@@ -38,11 +42,11 @@ function readRawBody(req) {
   });
 }
 
-async function ghl(method, path, { body, version = V_MAIN } = {}) {
+async function ghl(method, path, { body, version = V_MAIN, token = process.env.GHL_AGENCY_TOKEN } = {}) {
   const r = await fetch(`${GHL_BASE}${path}`, {
     method,
     headers: {
-      'Authorization': `Bearer ${process.env.GHL_AGENCY_TOKEN}`,
+      'Authorization': `Bearer ${token}`,
       'Version': version, 'Content-Type': 'application/json', 'Accept': 'application/json',
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -50,8 +54,12 @@ async function ghl(method, path, { body, version = V_MAIN } = {}) {
   let data = {}; try { data = await r.json(); } catch { data = {}; }
   return { ok: r.ok, status: r.status, data };
 }
+// agency-token helpers (provisioning)
 const ghlGet = (path, opts) => ghl('GET', path, opts);
 const ghlPost = (path, body, opts = {}) => ghl('POST', path, { ...opts, body });
+// location-token helpers (fulfillment: contacts / conversations / opportunities)
+const ghlGetLoc = (path, opts = {}) => ghl('GET', path, { ...opts, token: LOCATION_TOKEN });
+const ghlPostLoc = (path, body, opts = {}) => ghl('POST', path, { ...opts, body, token: LOCATION_TOKEN });
 
 function tempPassword() {
   const U = 'ABCDEFGHJKMNPQRSTUVWXYZ', L = 'abcdefghijkmnpqrstuvwxyz', N = '23456789', S = '!@#$%';
@@ -93,7 +101,7 @@ async function provisionFirstListing(order) {
 async function upsertOrderContact(order) {
   const firstName = (order.name || '').split(' ')[0] || '';
   const lastName = (order.name || '').split(' ').slice(1).join(' ') || '';
-  const r = await ghlPost('/contacts/upsert', {
+  const r = await ghlPostLoc('/contacts/upsert', {
     locationId: ORDERS_LOCATION_ID, email: order.email, firstName, lastName,
     name: order.name || order.email, phone: order.phone || '', companyName: order.company || '',
     source: 'OneVoice checkout', tags: ['onevoice-order', `plan-${(order.plan || 'basic').toLowerCase()}`],
@@ -165,13 +173,13 @@ function buildWelcomeEmailHtml(v) {
 async function sendWelcomeEmail(contactId, order) {
   const body = { type: 'Email', contactId, subject: `Welcome to OneVoice, ${order.name || 'friend'} - your account is ready`, html: buildWelcomeEmailHtml(order) };
   if (process.env.GHL_EMAIL_FROM) body.emailFrom = process.env.GHL_EMAIL_FROM;
-  const r = await ghlPost('/conversations/messages', body, { version: V_CONV });
+  const r = await ghlPostLoc('/conversations/messages', body, { version: V_CONV });
   return { ok: r.ok, status: r.status, messageId: r.data?.messageId || r.data?.emailMessageId || '', reason: r.ok ? '' : (r.data?.message || JSON.stringify(r.data).slice(0, 200)) };
 }
 
 // 4) pipeline order card
 async function findOrdersPipeline() {
-  const r = await ghlGet(`/opportunities/pipelines?locationId=${ORDERS_LOCATION_ID}`);
+  const r = await ghlGetLoc(`/opportunities/pipelines?locationId=${ORDERS_LOCATION_ID}`);
   if (!r.ok) return { ok: false, status: r.status, reason: r.data?.message || JSON.stringify(r.data).slice(0, 160) };
   const pipelines = r.data?.pipelines || [];
   const want = ORDERS_PIPELINE_NAME.toLowerCase();
@@ -183,7 +191,7 @@ async function findOrdersPipeline() {
 async function createOrderOpportunity(contactId, order) {
   const p = await findOrdersPipeline();
   if (!p.ok) return { ok: false, reason: `pipeline lookup: ${p.reason}` };
-  const r = await ghlPost('/opportunities/', {
+  const r = await ghlPostLoc('/opportunities/', {
     pipelineId: p.pipelineId, locationId: ORDERS_LOCATION_ID, pipelineStageId: p.stageId,
     name: `${order.name || order.email} - OneVoice ${order.plan || 'Basic'} (${order.count || 1})`,
     status: 'open', contactId, monetaryValue: Number(order.amount_today || 0),

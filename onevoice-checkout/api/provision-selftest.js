@@ -12,11 +12,13 @@ const V_MAIN = '2021-07-28';
 const V_CONV = '2021-04-15';
 const ORDERS_LOCATION_ID = process.env.GHL_ORDERS_LOCATION_ID || 'VkZwS3nGWMX06NRwLxJ8';
 const ORDERS_PIPELINE_NAME = process.env.GHL_ORDERS_PIPELINE_NAME || 'New Orders';
+// all self-test calls are LOCATION-level (contacts/opportunities/conversations)
+const LOCATION_TOKEN = process.env.GHL_LOCATION_TOKEN || process.env.GHL_AGENCY_TOKEN;
 
 async function ghl(method, path, { body, version = V_MAIN } = {}) {
   const r = await fetch(`${GHL_BASE}${path}`, {
     method,
-    headers: { 'Authorization': `Bearer ${process.env.GHL_AGENCY_TOKEN}`, 'Version': version, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    headers: { 'Authorization': `Bearer ${LOCATION_TOKEN}`, 'Version': version, 'Content-Type': 'application/json', 'Accept': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
   let data = {}; try { data = await r.json(); } catch { data = {}; }
@@ -40,8 +42,9 @@ export default async function handler(req, res) {
   if ((req.query.k || '') !== 'ovtest97') return res.status(403).json({ error: 'nope' });
 
   const env = {
-    has_token: !!process.env.GHL_AGENCY_TOKEN,
-    token_prefix: process.env.GHL_AGENCY_TOKEN ? process.env.GHL_AGENCY_TOKEN.slice(0, 8) : null,
+    has_location_token: !!process.env.GHL_LOCATION_TOKEN,
+    using_token_prefix: LOCATION_TOKEN ? LOCATION_TOKEN.slice(0, 8) : null,
+    fallback_to_agency: !process.env.GHL_LOCATION_TOKEN,
     orders_location: ORDERS_LOCATION_ID, orders_pipeline_name: ORDERS_PIPELINE_NAME,
     email_from: process.env.GHL_EMAIL_FROM || '(location default)',
   };
