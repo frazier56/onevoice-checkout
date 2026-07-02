@@ -27,12 +27,21 @@ export default async function handler(req, res) {
     companyId, snapshotId,
   };
 
-  // 1) create-location attempt
+  // 1) create-location attempt (no firstName/lastName)
   const loc = await ghlPost('/locations/', {
     name: 'Debug Test Co', companyId, snapshotId,
-    email: 'debugtest+ovprov@example.com', firstName: 'Debug', lastName: 'Test',
-    phone: '', country: 'US',
+    email: 'debugtest+ovprov@example.com', phone: '', country: 'US',
   }, token);
 
-  return res.status(200).json({ env, createLocation: loc });
+  let createUser = { skipped: 'location failed' };
+  const locationId = loc.ok ? (loc.data.id || loc.data.location?.id || '') : '';
+  if (locationId) {
+    createUser = await ghlPost('/users/', {
+      companyId, firstName: 'Debug', lastName: 'Test',
+      email: 'debugtest+ovprov@example.com', password: 'Xy7debugPass9!',
+      phone: '', type: 'account', role: 'admin', locationIds: [locationId],
+    }, token);
+  }
+
+  return res.status(200).json({ env, locationId, createLocation: loc, createUser });
 }

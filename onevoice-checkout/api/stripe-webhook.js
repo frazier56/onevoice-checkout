@@ -73,13 +73,12 @@ async function provisionFirstListing(order) {
   const lastName = (order.name || '').split(' ').slice(1).join(' ') || '';
 
   // 1) create sub-account (loads the OneVoice Realtor snapshot: Voice AI agent + calendar + custom values)
+  // NOTE: the /locations/ API does NOT accept firstName/lastName (those go on the user, below).
   const loc = await ghlPost('/locations/', {
     name: order.company || `${order.name || 'OneVoice'} - ${first.address || 'Listing 1'}`,
     companyId,
     snapshotId,
     email: order.email,
-    firstName,
-    lastName,
     phone: order.phone || '',
     country: 'US',
   });
