@@ -1,47 +1,5 @@
-/* TEMP DEBUG endpoint — reproduces the GHL create-sub-account + create-user calls
-   and returns the RAW GHL responses so we can see the exact error. Guarded by ?k=.
-   DELETE this file after debugging. */
-const GHL_BASE = 'https://services.leadconnectorhq.com';
-const GHL_VERSION = '2021-07-28';
-
-async function ghlPost(path, body, token) {
-  const r = await fetch(`${GHL_BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}`, 'Version': GHL_VERSION, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const text = await r.text();
-  let data; try { data = JSON.parse(text); } catch { data = text; }
-  return { status: r.status, ok: r.ok, data };
-}
-
+/* DISABLED. This endpoint previously created sub-accounts/users for debugging.
+   It has been neutralized for security and is safe to delete entirely. */
 export default async function handler(req, res) {
-  if ((req.query.k || '') !== 'ovdebug97') return res.status(403).json({ error: 'nope' });
-
-  const token = process.env.GHL_AGENCY_TOKEN;
-  const companyId = process.env.GHL_COMPANY_ID;
-  const snapshotId = process.env.GHL_SNAPSHOT_ID;
-
-  const env = {
-    has_token: !!token, token_prefix: token ? token.slice(0, 8) : null,
-    companyId, snapshotId,
-  };
-
-  // 1) create-location attempt (no firstName/lastName)
-  const loc = await ghlPost('/locations/', {
-    name: 'Debug Test Co', companyId, snapshotId,
-    email: 'debugtest+ovprov@example.com', phone: '', country: 'US',
-  }, token);
-
-  let createUser = { skipped: 'location failed' };
-  const locationId = loc.ok ? (loc.data.id || loc.data.location?.id || '') : '';
-  if (locationId) {
-    createUser = await ghlPost('/users/', {
-      companyId, firstName: 'Debug', lastName: 'Test',
-      email: 'debugtest+ovprov@example.com', password: 'Xy7debugPass9!',
-      phone: '', type: 'account', role: 'admin', locationIds: [locationId],
-    }, token);
-  }
-
-  return res.status(200).json({ env, locationId, createLocation: loc, createUser });
+  return res.status(410).json({ error: 'gone: endpoint disabled' });
 }
