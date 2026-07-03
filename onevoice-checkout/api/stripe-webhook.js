@@ -1,15 +1,18 @@
 /* =============================================================================
-   OneVoice - Stripe -> DIRECT-API provisioning + order fulfillment (self-contained)
+   OneVoice - Stripe -> trialing plan + DIRECT-API provisioning + fulfillment
    -----------------------------------------------------------------------------
-   On checkout.session.completed:
-     1) DURABLE IDEMPOTENCY: skip if this subscription already has ghl_location_id.
+   Pairs with the v2 (two-step) checkout: the checkout charges the SETUP FEE TODAY
+   (mode: payment) and saves the card. Here, on checkout.session.completed, we:
+     0) IDEMPOTENCY: skip if this customer already has ov_sub_created.
+     1) CREATE THE PLAN: build the recurring price from tier/term/count and start
+        a 7-DAY-TRIALING subscription off the saved card (plan bills day 8).
      2) PROVISION listing #1: create GHL sub-account + login user (temp password).
-     3) Mark the Stripe subscription (idempotency marker).
-     4) FULFILL via direct GHL API (no workflow/trigger):
+     3) Mark the Stripe customer (idempotency marker: ov_sub_created + location).
+     4) FULFILL via direct GHL API:
           - upsert the order CONTACT in the orders location
           - send the ONE branded welcome email (values baked in)
           - create the order card in the "New Orders" pipeline
-   Every step reports ok/err in the response for observability.
+   amount_today = the setup fee actually charged today ($69 first + $49 each).
 
    ENV: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, GHL_AGENCY_TOKEN, GHL_COMPANY_ID,
         GHL_SNAPSHOT_ID, GHL_ORDERS_LOCATION_ID (optional), GHL_ORDERS_PIPELINE_NAME
@@ -21,6 +24,49 @@
 import Stripe from 'stripe';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 export const config = { api: { bodyParser: false } };
+
+// ---- plan pricing (cents) — keep in sync with the setup fee in the checkout fn ----
+const PRICE = { basic: { base: 29700, add: 14900 }, pro: { base: 44900, add: 24900 } };
+const TERM  = {
+  monthly: { interval: 'month', interval_count: 1, months: 1,  off: 0    },
+  quarter: { interval: 'month', interval_count: 3, months: 3,  off: 0.25 },
+  annual:  { interval: 'year',  interval_count: 1, months: 12, off: 0.35 },
+};
+const TRIAL_DAYS = 7;
+
+// Start the recurring plan as a 7-day-trialing subscription off the card saved by
+// the setup-fee checkout. Dynamic price (base + add*(n-1), term discount applied).
+async function createTrialingSubscription(session, order) {
+  const customer = session.customer;
+  if (!customer) return { ok: false, reason: 'no customer on session' };
+  let pmId = '';
+  try {
+    const pi = await stripe.paymentIntents.retrieve(session.payment_intent);
+    pmId = pi.payment_method || '';
+    if (pmId) await stripe.customers.update(customer, { invoice_settings: { default_payment_method: pmId } });
+  } catch { /* proceed; Stripe can still bill via the customer default */ }
+
+  const p = PRICE[order.tier] || PRICE.basic;
+  const t = TERM[order.term]  || TERM.monthly;
+  const n = order.count;
+  const monthly   = p.base + p.add * (n - 1);
+  const recurring = Math.round(monthly * t.months * (1 - t.off)); // term total, discount applied
+  const planName  = `OneVoice ${order.plan} - ${n} listing${n > 1 ? 's' : ''} (${order.term})`;
+
+  const price = await stripe.prices.create({
+    currency: 'usd', unit_amount: recurring,
+    recurring: { interval: t.interval, interval_count: t.interval_count },
+    product_data: { name: planName },
+  });
+  const sub = await stripe.subscriptions.create({
+    customer,
+    items: [{ price: price.id }],
+    trial_period_days: TRIAL_DAYS,
+    default_payment_method: pmId || undefined,
+    metadata: { tier: order.tier, term: order.term, listings: String(n), username: order.username || '', source: 'onevoice-checkout' },
+  });
+  return { ok: true, subId: sub.id, priceId: price.id, recurring, trialEnd: sub.trial_end };
+}
 
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 const V_MAIN = '2021-07-28';
@@ -144,7 +190,7 @@ function buildWelcomeEmailHtml(v) {
       <tr><td style="padding:14px 22px 4px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14.5px;line-height:1.55;color:#243244;">
           <tr><td style="padding:0 0 8px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Try it now:</b> Log in, open your assistant, and place a test call online to hear how it greets your buyers.</td></tr>
-          <tr><td style="padding:0 0 8px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Your dedicated phone number is on the way.</b> Number activation and full account provisioning take a little longer &mdash; we'll email you the moment your number is live and ready to put on your listings and signs. Look out for that second email soon; during busy periods it can take up to 24 hours, but it's usually much faster.</td></tr>
+          <tr><td style="padding:0 0 8px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Your dedicated phone number is on the way.</b> Number activation and full account provisioning take a little longer &mdash; we'll email you the moment your number is live. During busy periods it can take up to 24 hours, but it's usually much faster.</td></tr>
           <tr><td style="padding:0;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Your dashboard</b> shows every call, transcript, and booked showing in one place.</td></tr>
         </table>
       </td></tr>
@@ -161,7 +207,7 @@ function buildWelcomeEmailHtml(v) {
         </table>
       </td></tr>
       <tr><td style="padding:18px 22px 10px;">
-        <p style="font-size:14px;line-height:1.6;color:#5a6677;margin:0;">Questions? Reply to this email, call or text us at (217) 290-9970, or reach <a href="mailto:support.onevoice@onesocial.ai" style="color:#0B8C80;font-weight:600;">support.onevoice@onesocial.ai</a>. Welcome aboard.</p>
+        <p style="font-size:14px;line-height:1.6;color:#5a6677;margin:0;">Questions? Reply to this email, call us at (855) 770-0200, or reach <a href="mailto:support.onevoice@onesocial.ai" style="color:#0B8C80;font-weight:600;">support.onevoice@onesocial.ai</a>. Welcome aboard.</p>
       </td></tr>
       <tr><td align="center" style="padding:22px 24px;border-top:1px solid #ece8dd;">
         <p style="font-size:12px;color:#8a93a3;line-height:1.7;margin:0;">OneVoice, a OneSocial company &middot; OneSocial AI, LLC<br>1111b S Governors Ave, Dover, DE 19904</p>
@@ -222,38 +268,61 @@ export default async function handler(req, res) {
   const s = event.data.object;
   try {
     const m = s.metadata || {};
-    const subId = s.subscription || '';
-    let subMeta = {};
-    if (subId) {
+    const customer = s.customer || '';
+
+    // 0) IDEMPOTENCY — this checkout charges the setup fee (payment mode); each order
+    //    gets its own customer. If we already started this customer's plan, bail.
+    if (customer) {
       try {
-        const sub = await stripe.subscriptions.retrieve(subId);
-        subMeta = sub.metadata || {};
-        if (subMeta.ghl_location_id) return res.status(200).json({ received: true, duplicate: true, location: subMeta.ghl_location_id });
+        const c = await stripe.customers.retrieve(customer);
+        if (c && !c.deleted && c.metadata?.ov_sub_created) {
+          return res.status(200).json({ received: true, duplicate: true, subscription: c.metadata.ov_sub_created, location: c.metadata.ghl_location_id || '' });
+        }
       } catch { /* proceed */ }
     }
+
     const tier = m.tier || 'basic', term = m.term || 'monthly';
     const count = parseInt(m.listings_count || m.listings || '1') || 1;
     let listings = []; try { listings = JSON.parse(m.listings || '[]'); } catch { listings = []; }
     const order = {
-      email: s.customer_details?.email || m.username || '', name: m.name || s.customer_details?.name || '',
+      email: s.customer_details?.email || m.email || '', name: m.name || s.customer_details?.name || '',
       phone: m.phone || s.customer_details?.phone || '', company: m.company || '', username: m.username || '',
       tier, term, count, listings, plan: tier === 'pro' ? 'Pro' : 'Basic',
       amount_today: ((s.amount_total || 0) / 100).toFixed(2),
-      stripe_session_id: s.id, stripe_customer: s.customer || '', stripe_subscription: subId,
+      stripe_session_id: s.id, stripe_customer: customer,
     };
+
+    // 1) start the recurring plan (7-day trial) off the saved card
+    let subRes = { ok: false, reason: 'skipped' };
+    try { subRes = await createTrialingSubscription(s, order); } catch (e) { subRes = { ok: false, reason: e.message }; }
+    order.stripe_subscription = subRes.subId || '';
+
+    // 2) provision listing #1 (GHL sub-account + login user)
     let prov = { provisioned: false, reason: 'skipped' };
     try { prov = await provisionFirstListing(order); } catch (e) { prov = { provisioned: false, reason: e.message }; }
-    if (prov.provisioned && prov.locationId && subId) {
-      try { await stripe.subscriptions.update(subId, { metadata: { ...subMeta, ghl_location_id: prov.locationId, provisioned_at: new Date().toISOString() } }); } catch { /* best effort */ }
+
+    // 3) idempotency marker on the customer (so retries don't double-charge/provision)
+    if (customer) {
+      try {
+        await stripe.customers.update(customer, {
+          metadata: { ov_sub_created: subRes.subId || '', ghl_location_id: prov.locationId || '', provisioned_at: new Date().toISOString() },
+        });
+      } catch { /* best effort */ }
     }
+
     order.login_url = prov.login?.loginUrl || LOGIN_URL;
     order.username = prov.login?.username || order.email;
     order.temp_password = prov.login?.tempPassword || '';
     order.new_location_id = prov.locationId || '';
+
+    // 4) fulfill: order contact + branded welcome email + "New Orders" pipeline card
     let fulfill = { contact: null, email: null, opportunity: null };
     try { fulfill = await fulfillOrder(order); } catch (e) { fulfill = { error: e.message }; }
+
     return res.status(200).json({
       received: true,
+      amount_charged_today: order.amount_today,
+      subscription_ok: subRes.ok, subscription_id: subRes.subId || '', subscription_reason: subRes.reason || '',
       provisioned: prov.provisioned, provision_reason: prov.reason || '',
       userCreated: prov.userCreated || false, user_reason: prov.userReason || '',
       contact_ok: fulfill.contact?.ok || false, contact_reason: fulfill.contact?.reason || '',
