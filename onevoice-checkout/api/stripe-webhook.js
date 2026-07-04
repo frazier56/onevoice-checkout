@@ -136,8 +136,9 @@ async function provisionFirstListing(order) {
     companyId, firstName, lastName, email: order.email, password: pw, phone: order.phone || '',
     type: 'account', role: 'admin', locationIds: [locationId],
   });
+  const userExists = !usr.ok && /already exists/i.test(usr.data?.message || JSON.stringify(usr.data || {}));
   return {
-    provisioned: true, locationId, userCreated: usr.ok,
+    provisioned: true, locationId, userCreated: usr.ok, userExists,
     userReason: usr.ok ? '' : `create-user ${usr.status}: ${usr.data.message || JSON.stringify(usr.data).slice(0, 160)}`,
     login: { username: order.email, tempPassword: usr.ok ? pw : '', loginUrl: LOGIN_URL },
   };
@@ -162,6 +163,13 @@ function buildWelcomeEmailHtml(v) {
   const name = esc(v.name || 'there'), username = esc(v.username || v.email || ''), tempPw = esc(v.temp_password || '');
   const loginUrl = esc(v.login_url || LOGIN_URL), plan = esc(v.plan || 'Basic'), count = esc(v.count || 1);
   const term = esc(v.term || 'monthly'), amount = esc(v.amount_today || '0.00');
+  const userExists = !!v.user_exists;
+  const credsInner = userExists
+    ? `Username: ${username}<br><span style="color:#5a6677;">You already have a OneVoice login for this email &mdash; sign in with your existing password.</span>`
+    : `Username: ${username}<br>Temporary password: ${tempPw}`;
+  const credsNote = userExists
+    ? `Forgot your password? Reset it from the login page.`
+    : `Set your own password on first login.`;
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;margin:0;padding:0;">
   <tr><td align="center" style="padding:0;">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
@@ -177,13 +185,12 @@ function buildWelcomeEmailHtml(v) {
           <tr><td style="padding:16px 18px;">
             <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:10px;">Log in and meet your AI</div>
             <div style="font-size:14px;color:#1A2233;line-height:1.9;">
-              Username: ${username}<br>
-              Temporary password: ${tempPw}
+              ${credsInner}
             </div>
             <div style="text-align:center;margin-top:14px;">
               <a href="${loginUrl}" style="display:inline-block;background:#15C2B2;color:#ffffff;font-weight:800;font-size:12px;text-decoration:none;padding:9px 20px;border-radius:8px;">Log in and test your AI &rarr;</a>
             </div>
-            <div style="font-size:12px;color:#8a93a3;text-align:center;margin-top:8px;">Set your own password on first login.</div>
+            <div style="font-size:12px;color:#8a93a3;text-align:center;margin-top:8px;">${credsNote}</div>
           </td></tr>
         </table>
       </td></tr>
@@ -313,6 +320,7 @@ export default async function handler(req, res) {
     order.login_url = prov.login?.loginUrl || LOGIN_URL;
     order.username = prov.login?.username || order.email;
     order.temp_password = prov.login?.tempPassword || '';
+    order.user_exists = prov.userExists || false;
     order.new_location_id = prov.locationId || '';
 
     // 4) fulfill: order contact + branded welcome email + "New Orders" pipeline card

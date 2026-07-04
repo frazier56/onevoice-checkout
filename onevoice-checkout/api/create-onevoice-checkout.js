@@ -1,41 +1,35 @@
 /* =============================================================================
-   OneVoice — Stripe Checkout (SETUP FEE TODAY + trialing plan)  ·  v2 (two-step)
+   OneVoice — Stripe Checkout (SETUP FEE TODAY + trialing plan)  ·  v3
    -----------------------------------------------------------------------------
-   WHY THIS CHANGED (Jul 2026):
-   The old version put the setup fee as a line item on a TRIALING subscription.
-   Stripe defers a trialing sub's first invoice (plan + one-time items) to the END
-   of the trial (day 7), so $0 was collected on day 0 — which contradicted the
-   locked model ("$69 setup charged TODAY, plan free 7 days, plan bills day 8"),
-   the welcome email, and the pipeline card ($0 monetaryValue).
-
-   NEW FLOW (two-step, one click for the customer):
-   1. THIS function creates a Stripe Checkout Session in `mode: 'payment'` that
-      charges the ONE-TIME SETUP FEE TODAY ($69 first + $49 each add'l) and SAVES
-      the card for future use. The Stripe page honestly shows "$XX due today".
-   2. On `checkout.session.completed`, the WEBHOOK (stripe-webhook.js) uses the
-      saved card to create the recurring PLAN as a 7-day-trialing subscription
-      (dynamic price from tier/term/count), then provisions the GHL account.
-
-   The front-end contract is UNCHANGED — the onboarding page still POSTs the same
-   { tier, term, count, contact, listings } body. No page edit needed.
-
-   ⚠️ TEST IN STRIPE TEST MODE FIRST (sk_test_ key) before flipping to live.
-
-   ENV: STRIPE_SECRET_KEY (sk_live_… or sk_test_…)
+   Two-step flow: this fn charges the ONE-TIME SETUP FEE TODAY (mode:'payment')
+   and saves the card; the webhook then starts the 7-day-trialing plan.
+   v3 adds a PLAN SUMMARY on the Stripe page (custom_text + richer line item)
+   so the customer sees plan/trial/then-price, not just the setup amount.
+   ⚠️ TEST IN STRIPE TEST MODE FIRST. ENV: STRIPE_SECRET_KEY.
    ============================================================================= */
 
 import Stripe from 'stripe';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// ---- setup fee (cents) — server-side source of truth. Plan price lives in the
-//      webhook (it builds the trialing subscription). Keep these two in sync. ----
-const SETUP = { first: 6900, add: 4900 }; // $69 first listing, +$49 each additional
+// setup fee (cents) — server-side source of truth
+const SETUP = { first: 6900, add: 4900 };
+// plan price (cents) — keep in sync with the webhook
+const PRICE = { basic: { base: 29700, add: 14900 }, pro: { base: 44900, add: 24900 } };
+const TERM  = {
+  monthly: { months: 1,  off: 0,    word: 'per month' },
+  quarter: { months: 3,  off: 0.25, word: 'every 3 months' },
+  annual:  { months: 12, off: 0.35, word: 'per year' },
+};
 
 const CORS = {
   'Access-Control-Allow-Origin': 'https://onevoice.onesocial.ai',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
+
+function money(cents) {
+  return '$' + (Number(cents || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\.00$/, '');
+}
 
 export default async function handler(req, res) {
   Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
@@ -46,25 +40,42 @@ export default async function handler(req, res) {
     const { tier = 'basic', term = 'monthly', count = 1, contact = {}, listings = [] } = req.body || {};
     const n = Math.max(1, parseInt(count) || 1);
     const setup = SETUP.first + SETUP.add * (n - 1);
-    const planName = `OneVoice ${tier === 'pro' ? 'Pro' : 'Basic'} — ${n} listing${n > 1 ? 's' : ''} (${term})`;
+
+    const p = PRICE[tier] || PRICE.basic;
+    const t = TERM[term] || TERM.monthly;
+    const recurring = Math.round((p.base + p.add * (n - 1)) * t.months * (1 - t.off)); // term total, discount applied
+    const planLabel = tier === 'pro' ? 'Pro' : 'Basic';
+    const planName  = `OneVoice ${planLabel} — ${n} listing${n > 1 ? 's' : ''}`;
+    const trialEnd  = new Date(Date.now() + 7 * 24 * 3600 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+
+    // Plan summary shown on the Stripe page (above the pay button)
+    const summary =
+      `${planName} · billed ${t.word}. ` +
+      `7-day free trial — you are NOT charged for the plan today. ` +
+      `After the trial, ${money(recurring)} ${t.word} begins on ${trialEnd}. ` +
+      `The one-time setup fee below (${money(setup)}) is due today and is non-refundable. ` +
+      `Cancel anytime before ${trialEnd} and the plan won't bill.`;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: contact.email || undefined,
-      customer_creation: 'always',                       // need a Customer to attach the plan to
+      customer_creation: 'always',
       payment_intent_data: {
-        setup_future_usage: 'off_session',               // save the card so the webhook can start the plan
-        description: `OneVoice one-time setup fee — ${planName}`,
+        setup_future_usage: 'off_session',
+        description: `OneVoice one-time setup fee — ${planName} (${term})`,
       },
       line_items: [{
         quantity: 1,
         price_data: {
           currency: 'usd',
-          unit_amount: setup,                            // ← charged TODAY
-          product_data: { name: `OneVoice setup fee (${n} listing${n > 1 ? 's' : ''})` },
+          unit_amount: setup,
+          product_data: {
+            name: `OneVoice ${planLabel} — one-time setup (${n} listing${n > 1 ? 's' : ''})`,
+            description: `7-day free trial on your plan. Then ${money(recurring)} ${t.word} starting ${trialEnd}. This charge is the one-time setup fee only.`,
+          },
         },
       }],
-      // full order travels on metadata so the webhook can build the right plan + provision
+      custom_text: { submit: { message: summary } },
       metadata: {
         name: contact.name || '', company: contact.company || '', email: contact.email || '',
         phone: contact.phone || '', license: contact.license || '', username: contact.username || '',
