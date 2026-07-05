@@ -23,7 +23,7 @@
 
 import Stripe from 'stripe';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-export const config = { api: { bodyParser: false } };
+export const config = { api: { bodyParser: false }, maxDuration: 30 };
 
 // ---- plan pricing (cents) — keep in sync with the setup fee in the checkout fn ----
 const PRICE = { basic: { base: 29700, add: 14900 }, pro: { base: 44900, add: 24900 } };
@@ -142,6 +142,32 @@ async function provisionFirstListing(order) {
     userReason: usr.ok ? '' : `create-user ${usr.status}: ${usr.data.message || JSON.stringify(usr.data).slice(0, 160)}`,
     login: { username: order.email, tempPassword: usr.ok ? pw : '', loginUrl: LOGIN_URL },
   };
+}
+
+// 1b) BASIC-plan gate: hide scoring by deleting the score custom fields from the
+//     new sub-account, so the Lead Score columns drop out of the customer's Leads
+//     list (Pro-only feature). Best-effort: the snapshot loads its fields async, so
+//     we retry briefly; if we still miss, worst case a Basic user sees a score
+//     (harmless). Never blocks provisioning. Uses the AGENCY token on the new location.
+const SCORE_FIELD_KEYS = ['contact.lead_score', 'contact.lead_score_', 'contact.lead_score_reason'];
+async function hideScoringForBasic(locationId) {
+  if (!locationId) return { ran: false, reason: 'no locationId' };
+  let targets = [];
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const list = await ghlGet(`/locations/${locationId}/customFields`);
+    if (!list.ok) return { ran: true, ok: false, status: list.status, reason: `list ${list.status}: ${String(list.data?.message || '').slice(0, 120)}` };
+    const fields = list.data?.customFields || [];
+    targets = fields.filter(f => SCORE_FIELD_KEYS.includes(f.fieldKey));
+    if (targets.length) break;
+    if (attempt < 3) await new Promise(r => setTimeout(r, 3000)); // let the snapshot finish loading fields
+  }
+  if (!targets.length) return { ran: true, ok: true, found: 0, note: 'no score fields yet (snapshot still loading) - Basic may temporarily see scores' };
+  const deleted = [];
+  for (const f of targets) {
+    const d = await ghl('DELETE', `/locations/${locationId}/customFields/${f.id}`);
+    deleted.push({ key: f.fieldKey, ok: d.ok, status: d.status });
+  }
+  return { ran: true, ok: true, found: targets.length, deleted };
 }
 
 // 2) upsert order contact
@@ -308,6 +334,14 @@ export default async function handler(req, res) {
     let prov = { provisioned: false, reason: 'skipped' };
     try { prov = await provisionFirstListing(order); } catch (e) { prov = { provisioned: false, reason: e.message }; }
 
+    // 2b) BASIC plan: hide scoring (delete the score fields so they drop from the Leads list)
+    let scoreGate = { ran: false, reason: 'not basic' };
+    try {
+      if (order.tier === 'basic' && prov.provisioned && prov.locationId) {
+        scoreGate = await hideScoringForBasic(prov.locationId);
+      }
+    } catch (e) { scoreGate = { ran: true, ok: false, reason: e.message }; }
+
     // 3) idempotency marker on the customer (so retries don't double-charge/provision)
     if (customer) {
       try {
@@ -337,6 +371,7 @@ export default async function handler(req, res) {
       email_ok: fulfill.email?.ok || false, email_reason: fulfill.email?.reason || '',
       opportunity_ok: fulfill.opportunity?.ok || false, opportunity_reason: fulfill.opportunity?.reason || '',
       pipeline: fulfill.opportunity?.pipeline || '', stage: fulfill.opportunity?.stage || '',
+      basic_score_gate: scoreGate,
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
