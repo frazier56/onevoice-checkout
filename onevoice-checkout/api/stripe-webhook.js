@@ -74,6 +74,7 @@ const V_CONV = '2021-04-15';
 const ORDERS_LOCATION_ID = process.env.GHL_ORDERS_LOCATION_ID || 'VkZwS3nGWMX06NRwLxJ8';
 const ORDERS_PIPELINE_NAME = process.env.GHL_ORDERS_PIPELINE_NAME || 'New Orders';
 const LOGIN_URL = process.env.GHL_LOGIN_URL || 'https://app.gohighlevel.com/';
+const ASSIGN_GUIDE_URL = process.env.ASSIGN_GUIDE_URL || 'https://onevoice-checkout.vercel.app/assign-number.html';
 // Provisioning (create sub-account + user) uses the AGENCY token.
 // Fulfillment (contact + email + pipeline card) hits LOCATION-level endpoints,
 // which an agency token can't access - so those use a LOCATION-level token.
@@ -223,7 +224,7 @@ function buildWelcomeEmailHtml(v) {
       <tr><td style="padding:14px 22px 4px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14.5px;line-height:1.55;color:#243244;">
           <tr><td style="padding:0 0 8px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Try it now:</b> Log in, open your assistant, and place a test call online to hear how it greets your buyers.</td></tr>
-          <tr><td style="padding:0 0 8px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Your dedicated phone number is on the way.</b> Number activation and full account provisioning take a little longer &mdash; we'll email you the moment your number is live. During busy periods it can take up to 24 hours, but it's usually much faster.</td></tr>
+          <tr><td style="padding:0 0 8px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Last step &mdash; pick your phone number. It's on us.</b> Choosing your number takes about 2 minutes and is <b>completely free</b> &mdash; we cover the cost. We'll walk you through it click-by-click: <a href="${ASSIGN_GUIDE_URL}" style="color:#0B8C80;font-weight:700;text-decoration:underline;">Show me how &rarr;</a></td></tr>
           <tr><td style="padding:0;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Your dashboard</b> shows every call, transcript, and booked showing in one place.</td></tr>
         </table>
       </td></tr>
