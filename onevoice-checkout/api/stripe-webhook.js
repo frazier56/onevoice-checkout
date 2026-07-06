@@ -22,6 +22,7 @@
    ============================================================================= */
 
 import Stripe from 'stripe';
+import { provisionAgentsForOrder } from '../lib/provisionAgents.js';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 export const config = { api: { bodyParser: false }, maxDuration: 30 };
 
@@ -343,6 +344,19 @@ export default async function handler(req, res) {
       }
     } catch (e) { scoreGate = { ran: true, ok: false, reason: e.message }; }
 
+    // 2c) MULTI-LISTING (#49): build a Voice AI agent for listings 2..N inside the
+    //     new sub-account. Best-effort + graceful — needs the OAuth Sub-Account app
+    //     + KV configured; if either is missing it returns a reason and NEVER blocks
+    //     the order. Single-listing orders skip it entirely.
+    let agents = { ok: true, reason: 'skipped' };
+    try {
+      if (prov.provisioned && prov.locationId && count > 1) {
+        agents = await provisionAgentsForOrder({ locationId: prov.locationId, order, sessionId: s.id });
+      } else {
+        agents = { ok: true, reason: count > 1 ? 'order not provisioned' : 'single listing (no extra agents)' };
+      }
+    } catch (e) { agents = { ok: false, reason: e.message }; }
+
     // 3) idempotency marker on the customer (so retries don't double-charge/provision)
     if (customer) {
       try {
@@ -373,6 +387,7 @@ export default async function handler(req, res) {
       opportunity_ok: fulfill.opportunity?.ok || false, opportunity_reason: fulfill.opportunity?.reason || '',
       pipeline: fulfill.opportunity?.pipeline || '', stage: fulfill.opportunity?.stage || '',
       basic_score_gate: scoreGate,
+      multi_listing_agents: agents,
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });

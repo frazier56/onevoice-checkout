@@ -9,6 +9,7 @@
    ============================================================================= */
 
 import Stripe from 'stripe';
+import { kvSet } from '../lib/kv.js';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // setup fee (cents) — server-side source of truth
@@ -86,6 +87,13 @@ export default async function handler(req, res) {
       success_url: 'https://onevoice.onesocial.ai/welcome?session_id={CHECKOUT_SESSION_ID}',
       cancel_url:  'https://onevoice.onesocial.ai/',
     });
+
+    // AUTOMATION (#49): stash the FULL listings payload in KV keyed by the checkout
+    // session id, so the webhook can build a Voice AI agent for listings 2..N.
+    // Stripe metadata truncates the listings JSON at 480 chars; KV keeps it all.
+    // Best-effort + graceful: a KV outage (or KV env not set yet) never blocks
+    // checkout — agents 2..N just fall back to whatever survived in metadata.
+    try { await kvSet('ov:order:' + session.id, { listings, tier, term, count: n }, { ttlSeconds: 172800 }); } catch {}
 
     return res.status(200).json({ url: session.url });
   } catch (err) {
