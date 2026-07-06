@@ -172,6 +172,27 @@ async function hideScoringForBasic(locationId) {
   return { ran: true, ok: true, found: targets.length, deleted };
 }
 
+// set a plan_tier custom value on the new sub-account (all plans) so the post-call
+// workflow can gate the lead score to Pro only. Upsert via the agency token.
+async function setPlanTier(locationId, tier) {
+  if (!locationId) return { ran: false, reason: 'no locationId' };
+  const val = tier === 'pro' ? 'pro' : 'basic';
+  const list = await ghlGet(`/locations/${locationId}/customValues`);
+  if (!list.ok) return { ran: true, ok: false, status: list.status, reason: `list ${list.status}: ${String(list.data?.message || '').slice(0, 120)}` };
+  const cvs = Array.isArray(list.data?.customValues) ? list.data.customValues : (Array.isArray(list.data) ? list.data : []);
+  const existing = cvs.find(c => {
+    const n = String(c.name || '').toLowerCase().replace(/\s+/g, '_');
+    const k = String(c.fieldKey || '').toLowerCase();
+    return n === 'plan_tier' || k.includes('plan_tier');
+  });
+  if (existing) {
+    const u = await ghl('PUT', `/locations/${locationId}/customValues/${existing.id}`, { body: { name: existing.name || 'plan_tier', value: val } });
+    return { ran: true, ok: u.ok, status: u.status, action: 'update', value: val, reason: u.ok ? '' : String(u.data?.message || '').slice(0, 120) };
+  }
+  const c = await ghlPost(`/locations/${locationId}/customValues`, { name: 'plan_tier', value: val });
+  return { ran: true, ok: c.ok, status: c.status, action: 'create', value: val, reason: c.ok ? '' : String(c.data?.message || '').slice(0, 120) };
+}
+
 // 2) upsert order contact
 async function upsertOrderContact(order) {
   const firstName = (order.name || '').split(' ')[0] || '';
@@ -344,6 +365,12 @@ export default async function handler(req, res) {
       }
     } catch (e) { scoreGate = { ran: true, ok: false, reason: e.message }; }
 
+    // 2b2) set plan_tier custom value (all plans) so the post-call workflow gates the score to Pro
+    let planTier = { ran: false, reason: 'not provisioned' };
+    try {
+      if (prov.provisioned && prov.locationId) planTier = await setPlanTier(prov.locationId, order.tier);
+    } catch (e) { planTier = { ran: true, ok: false, reason: e.message }; }
+
     // 2c) MULTI-LISTING (#49): build a Voice AI agent for listings 2..N inside the
     //     new sub-account. Best-effort + graceful — needs the OAuth Sub-Account app
     //     + KV configured; if either is missing it returns a reason and NEVER blocks
@@ -387,6 +414,7 @@ export default async function handler(req, res) {
       opportunity_ok: fulfill.opportunity?.ok || false, opportunity_reason: fulfill.opportunity?.reason || '',
       pipeline: fulfill.opportunity?.pipeline || '', stage: fulfill.opportunity?.stage || '',
       basic_score_gate: scoreGate,
+      plan_tier: planTier,
       multi_listing_agents: agents,
     });
   } catch (err) {
