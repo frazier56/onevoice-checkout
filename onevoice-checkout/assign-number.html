@@ -28,6 +28,9 @@
   .callout{display:flex;gap:10px;align-items:flex-start;border-radius:10px;padding:12px 14px;margin-top:12px;font-size:14.5px;line-height:1.5;}
   .callout.free{background:#F1FCFA;border:1px solid #bfe9e3;color:#0c6b61;font-weight:400;}
   .callout.skip{background:#FFF7EC;border:1px solid #f3dcb4;color:#8a5a12;}
+  .callout.reg{background:#EDF6FF;border:1px solid #bcdcff;color:#0b4a80;}
+  .ack{display:flex;gap:10px;align-items:flex-start;margin-top:10px;font-size:14px;color:#33404f;cursor:pointer;user-select:none;}
+  .ack input{margin-top:2px;width:17px;height:17px;accent-color:var(--teal2);flex:0 0 auto;}
   .callout b{font-weight:800;}
   .done{background:#F6FDFC;border:1px solid #cdeeea;border-radius:12px;padding:14px 16px;margin:4px 0 4px;font-size:15px;color:#0d5f57;font-weight:600;}
   .done b{color:var(--teal2);}
@@ -75,6 +78,8 @@
     <div class="step">
       <div class="head"><div class="num">4</div><div><h3>Verify your identity (one time, ~2 min)</h3>
       <p>Every U.S. phone number requires a quick, secure ID check. Click <b>Begin verifying</b>. The easiest way: choose <b>"Continue on another device,"</b> scan the code with your phone, and snap a photo of your ID. When you see <b>"You're done!"</b>, you're set.</p></div></div>
+      <div class="callout reg">🛡️ <span><b>Why do I have to show ID?</b> Activating any new U.S. phone number requires a one-time identity check — it's a standard telecom rule tied to federal anti-spam and anti-fraud regulations (the FCC's STIR/SHAKEN framework) that every carrier must follow. It's quick, secure, and handled by a trusted verification partner. <b>OneVoice never sees or stores your ID.</b></span></div>
+      <label class="ack"><input type="checkbox"> I understand this is a standard, secure telecom requirement, and I'm ready to verify.</label>
       <div class="shot"><img src="guide/4-verify-id.png" alt="Identity verification: Begin verifying"></div>
       <div class="callout skip">⚠️ <span><b>After you finish, GoHighLevel may show an "A2P Registration" or "10DLC" screen — just close/skip it.</b> That's only for sending text messages and is <b>not needed</b> for your AI to answer calls. If you see a red "10DLC registration" banner later, you can ignore it too.</span></div>
     </div>
