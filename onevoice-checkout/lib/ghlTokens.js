@@ -139,15 +139,42 @@ async function mintLocationToken(locationId) {
 }
 
 /**
+ * A configured Private Integration Token (PIT) for a location, if any.
+ * PITs are sub-account bearer tokens created in the GHL UI (Settings ->
+ * Private Integrations) that CAN hold voice-ai-agents scopes -- so they let us
+ * create agents with NO marketplace OAuth install / no company token / no login.
+ * Two ways to configure:
+ *   GHL_LOCATION_PITS = {"<locationId>":"<pit>", ...}   (JSON map; per-customer)
+ *   GHL_LOCATION_TOKEN = <pit>  applies to GHL_PIT_LOCATION_ID (default = the
+ *     demo location) -- the simple single-sub-account/test case.
+ * PITs are long-lived and do not refresh, so we return them directly.
+ */
+function locationPit(locationId) {
+  try {
+    const map = JSON.parse(process.env.GHL_LOCATION_PITS || '{}');
+    if (map && map[locationId]) return String(map[locationId]);
+  } catch { /* bad JSON -> ignore, fall through */ }
+  const single = process.env.GHL_LOCATION_TOKEN || '';
+  const pitLoc = process.env.GHL_PIT_LOCATION_ID || process.env.GHL_DEMO_LOCATION_ID || 'VkZwS3nGWMX06NRwLxJ8';
+  if (single && locationId === pitLoc) return single;
+  return '';
+}
+
+/**
  * The workhorse: a valid access token for a specific sub-account.
- * Order: stored location token (refresh if stale) -> mint from company token.
+ * Order: configured PIT (no OAuth needed) -> stored location OAuth token
+ *        (refresh if stale) -> mint from company token.
  */
 export async function getLocationToken(locationId) {
   if (!locationId) return { ok: false, reason: 'no locationId' };
-  if (!CLIENT_ID || !CLIENT_SECRET) return { ok: false, reason: 'GHL_OAUTH_CLIENT_ID/SECRET not set' };
+  // 1) A Private Integration Token wins -- it needs no company token / no login.
+  const pit = locationPit(locationId);
+  if (pit) return { ok: true, token: pit, pit: true };
+  // 2) OAuth location token (stored, or minted from the company token).
+  if (!CLIENT_ID || !CLIENT_SECRET) return { ok: false, reason: 'no PIT for location and GHL_OAUTH_CLIENT_ID/SECRET not set' };
   const stored = await getValidRecord(locKey(locationId));
   if (stored.ok) return { ok: true, token: stored.rec.accessToken };
   const minted = await mintLocationToken(locationId);
   if (minted.ok) return { ok: true, token: minted.rec.accessToken, minted: true };
-  return { ok: false, reason: `stored: ${stored.reason} | mint: ${minted.reason}` };
+  return { ok: false, reason: `no PIT | stored: ${stored.reason} | mint: ${minted.reason}` };
 }

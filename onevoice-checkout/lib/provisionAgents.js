@@ -231,7 +231,7 @@ export async function provisionAgentsForOrder({ locationId, order = {}, sessionI
 
   // #1: refresh the snapshot agent's prompt with listing #1's real details
   if (updateFirstAgent && template.id && basePrompt && listings[0]) {
-    const body = { locationId, agentPrompt: injectListing(basePrompt, listings[0]) };
+    const body = { locationId, agentName: agentNameFor(template, listings[0], 0), agentPrompt: injectListing(basePrompt, listings[0]) };
     let u = await vai('PUT', `/voice-ai/agents/${template.id}`, { token: tok.token, body });
     if (!u.ok && (u.status === 404 || u.status === 405)) {
       u = await vai('PATCH', `/voice-ai/agents/${template.id}`, { token: tok.token, body });
