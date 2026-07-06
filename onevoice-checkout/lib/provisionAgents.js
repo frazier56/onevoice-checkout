@@ -46,7 +46,7 @@ import { kvGet } from './kv.js';
 import { getLocationToken } from './ghlTokens.js';
 
 const GHL_BASE = 'https://services.leadconnectorhq.com';
-const V_VOICE = process.env.GHL_VOICE_API_VERSION || '3'; // proven: "3" on POST /voice-ai/agents
+const V_VOICE = process.env.GHL_VOICE_API_VERSION || '2021-07-28'; // proven live Jul 6: 2021-07-28 works (201 create); "3" is rejected "version header is invalid"
 const DEMO_LOCATION_ID = process.env.GHL_DEMO_LOCATION_ID || 'VkZwS3nGWMX06NRwLxJ8';
 const DEMO_AGENT_ID = process.env.GHL_DEMO_AGENT_ID || '6a41a5aef138f3468eba560d';
 
