@@ -137,11 +137,20 @@ export function injectListing(templatePrompt, listing = {}) {
   return p;
 }
 
-/** Short agent name per listing, e.g. "Ava — 412 Maple St". */
+/** Short agent name per listing, e.g. "Ava — 412 Maple St". GHL caps names at 40 chars. */
 function agentNameFor(template, listing, i) {
-  const base = (field(template?.agentName).split('—')[0] || 'Ava').trim() || 'Ava';
-  const short = field(listing.address).split(',')[0] || `Listing ${i + 1}`;
-  return `${base} — ${short}`;
+  let base = field(listing.assistant);
+  if (!base) {
+    base = field(template?.agentName).split('—')[0].trim();
+    if (!base || /template/i.test(base)) base = 'Ava';
+  }
+  // listing has a free-text `details` blob (no structured address) — take the
+  // first line/segment as a short label; fall back to "Listing N".
+  const detail = field(listing.address) || field(listing.details).split(/[,.\n]/)[0].trim();
+  const short = detail || `Listing ${i + 1}`;
+  let name = `${base} — ${short}`;
+  if (name.length > 40) name = name.slice(0, 40).replace(/[\s—-]+$/, '').trim();
+  return name;
 }
 
 // ---- template resolution --------------------------------------------------------
@@ -257,4 +266,3 @@ export async function provisionAgentsForOrder({ locationId, order = {}, sessionI
   out.ok = out.results.length > 0 && out.results.filter(r => r.action === 'create-agent').every(r => r.ok);
   return out;
 }
-
