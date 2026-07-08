@@ -24,7 +24,7 @@
 import Stripe from 'stripe';
 import { provisionAgentsForOrder } from '../lib/provisionAgents.js';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-export const config = { api: { bodyParser: false }, maxDuration: 30 };
+export const config = { api: { bodyParser: false }, maxDuration: 60 };
 
 // ---- plan pricing (cents) — keep in sync with the setup fee in the checkout fn ----
 const PRICE = { basic: { base: 29700, add: 14900 }, pro: { base: 44900, add: 24900 } };
@@ -488,6 +488,26 @@ export default async function handler(req, res) {
       lcPhone.founderAlert = await sendFounderLCPhoneAlert(order, prov.locationId, lcPhone);
     }
 
+    order.login_url = prov.login?.loginUrl || LOGIN_URL;
+    order.username = prov.login?.username || order.email;
+    order.temp_password = prov.login?.tempPassword || '';
+    order.user_exists = prov.userExists || false;
+    order.new_location_id = prov.locationId || '';
+
+    // 4) fulfill: order contact + branded welcome email + "New Orders" pipeline card
+    let fulfill = { contact: null, email: null, opportunity: null };
+    try { fulfill = await fulfillOrder(order); } catch (e) { fulfill = { error: e.message }; }
+
+    // idempotency marker EARLY (right after the customer-visible steps) so a Stripe retry
+    // can't re-provision or re-email if a later slow step (agents/CVs) times out.
+    if (customer) {
+      try {
+        await stripe.customers.update(customer, {
+          metadata: { ov_sub_created: subRes.subId || '', ghl_location_id: prov.locationId || '', provisioned_at: new Date().toISOString() },
+        });
+      } catch { /* best effort */ }
+    }
+
     // 2b) BASIC plan: hide scoring (delete the score fields so they drop from the Leads list)
     let scoreGate = { ran: false, reason: 'not basic' };
     try {
@@ -523,24 +543,6 @@ export default async function handler(req, res) {
       if (prov.provisioned && prov.locationId) cvSet = await setListingCustomValues(prov.locationId, order);
     } catch (e) { cvSet = { ran: true, ok: false, reason: e.message }; }
 
-    // 3) idempotency marker on the customer (so retries don't double-charge/provision)
-    if (customer) {
-      try {
-        await stripe.customers.update(customer, {
-          metadata: { ov_sub_created: subRes.subId || '', ghl_location_id: prov.locationId || '', provisioned_at: new Date().toISOString() },
-        });
-      } catch { /* best effort */ }
-    }
-
-    order.login_url = prov.login?.loginUrl || LOGIN_URL;
-    order.username = prov.login?.username || order.email;
-    order.temp_password = prov.login?.tempPassword || '';
-    order.user_exists = prov.userExists || false;
-    order.new_location_id = prov.locationId || '';
-
-    // 4) fulfill: order contact + branded welcome email + "New Orders" pipeline card
-    let fulfill = { contact: null, email: null, opportunity: null };
-    try { fulfill = await fulfillOrder(order); } catch (e) { fulfill = { error: e.message }; }
 
     return res.status(200).json({
       received: true,
