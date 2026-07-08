@@ -78,6 +78,13 @@ export default async function handler(req, res) {
         if (ct && ct.token && await tryToken('oauth-company', ct.token)) via = 'oauth-company';
       } catch (e) { attempts.push({ label: 'oauth-company', error: e.message }); }
     }
+    if (!via) {
+      try {
+        const lt = await getLocationToken(locId);
+        if (lt && lt.ok && lt.token && await tryToken('oauth-location', lt.token)) via = 'oauth-location';
+        else if (!lt || !lt.ok) attempts.push({ label: 'oauth-location', skipped: (lt && lt.reason) || 'no location token' });
+      } catch (e) { attempts.push({ label: 'oauth-location', error: e.message }); }
+    }
     out.lcphone = { ok: !!via, via, attempts };
   }
 
