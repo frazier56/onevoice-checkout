@@ -179,19 +179,27 @@ function cloneSettings(t = {}) {
  *  3) hardcoded defaults
  */
 export async function resolveTemplate(locationId, locToken) {
-  const list = await vai('GET', `/voice-ai/agents?locationId=${encodeURIComponent(locationId)}`, { token: locToken });
-  if (list.ok) {
-    const agents = parseAgentList(list.data);
-    if (agents.length) {
-      const t = agents[0];
-      let full = t;
-      if (t.id && !t.agentPrompt) {
-        const g = await vai('GET', `/voice-ai/agents/${t.id}?locationId=${encodeURIComponent(locationId)}`, { token: locToken });
-        if (g.ok) full = { ...t, ...(g.data.agent || g.data) };
+  // The snapshot plants the template agent ASYNC after the sub-account is
+  // created, so on a FRESH order the agent (and/or its prompt) may not be there
+  // for ~10-20s. Poll briefly so we clone from the real snapshot prompt instead
+  // of falling back to the skeleton. Breaks as soon as a prompt-bearing agent
+  // appears; caps well under the function timeout.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const list = await vai('GET', `/voice-ai/agents?locationId=${encodeURIComponent(locationId)}`, { token: locToken });
+    if (list.ok) {
+      const agents = parseAgentList(list.data);
+      if (agents.length) {
+        const t = agents[0];
+        let full = t;
+        if (t.id && !t.agentPrompt) {
+          const g = await vai('GET', `/voice-ai/agents/${t.id}?locationId=${encodeURIComponent(locationId)}`, { token: locToken });
+          if (g.ok) full = { ...t, ...(g.data.agent || g.data) };
+        }
+        if (full.agentPrompt) return { source: 'snapshot-agent', template: full };
+        if (attempt >= 7) return { source: 'snapshot-agent-settings-only', template: full };
       }
-      if (full.agentPrompt) return { source: 'snapshot-agent', template: full };
-      return { source: 'snapshot-agent-settings-only', template: full };
     }
+    await new Promise(r => setTimeout(r, 2500));
   }
   const demoToken = process.env.GHL_LOCATION_TOKEN || '';
   if (demoToken) {
