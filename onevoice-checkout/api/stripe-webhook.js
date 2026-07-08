@@ -172,25 +172,71 @@ async function hideScoringForBasic(locationId) {
   return { ran: true, ok: true, found: targets.length, deleted };
 }
 
-// set a plan_tier custom value on the new sub-account (all plans) so the post-call
-// workflow can gate the lead score to Pro only. Upsert via the agency token.
-async function setPlanTier(locationId, tier) {
-  if (!locationId) return { ran: false, reason: 'no locationId' };
-  const val = tier === 'pro' ? 'pro' : 'basic';
-  const list = await ghlGet(`/locations/${locationId}/customValues`);
-  if (!list.ok) return { ran: true, ok: false, status: list.status, reason: `list ${list.status}: ${String(list.data?.message || '').slice(0, 120)}` };
-  const cvs = Array.isArray(list.data?.customValues) ? list.data.customValues : (Array.isArray(list.data) ? list.data : []);
+// Populate the sub-account custom values the master agent prompt + post-call
+// workflow read at runtime: agent_display_name, realtor_name, agent_business_name,
+// listing_address, listing_details, plan_tier. The SNAPSHOT plants these KEYS
+// asynchronously after the sub-account is created; without this the agent greets
+// with blanks ("This is ___, ___'s assistant about ___"). Upsert = match an existing
+// key (by normalized name OR fieldKey fragment) and PUT its value, else create.
+// Fragment matching also catches malformed snapshot keys (e.g. "plan_tierplan_tier")
+// so we UPDATE the existing one instead of spawning a duplicate.
+function cvNorm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''); }
+
+function listingDetailsText(listing = {}) {
+  const f = v => (v == null ? '' : String(v).trim());
+  const parts = [];
+  if (f(listing.beds) || f(listing.baths)) parts.push(`${f(listing.beds) || '?'} bed / ${f(listing.baths) || '?'} bath`);
+  if (f(listing.sqft)) parts.push(`${f(listing.sqft)} sqft`);
+  if (f(listing.year)) parts.push(`built ${f(listing.year)}`);
+  if (f(listing.price)) parts.push(`listed at $${f(listing.price).replace(/^\$/, '')}`);
+  const feats = f(listing.features || listing.details || listing.notes);
+  let s = parts.join(', ');
+  if (feats) s += (s ? '. ' : '') + feats;
+  return s;
+}
+
+async function upsertCustomValue(cvs, locationId, target, value) {
+  const frag = target.keyFrag;
   const existing = cvs.find(c => {
-    const n = String(c.name || '').toLowerCase().replace(/\s+/g, '_');
-    const k = String(c.fieldKey || '').toLowerCase();
-    return n === 'plan_tier' || k.includes('plan_tier');
+    const n = cvNorm(c.name);
+    const k = String(c.fieldKey || c.key || '').toLowerCase();
+    return n === frag || n.includes(frag) || k.includes(frag);
   });
-  if (existing) {
-    const u = await ghl('PUT', `/locations/${locationId}/customValues/${existing.id}`, { body: { name: existing.name || 'plan_tier', value: val } });
-    return { ran: true, ok: u.ok, status: u.status, action: 'update', value: val, reason: u.ok ? '' : String(u.data?.message || '').slice(0, 120) };
+  if (existing && existing.id) {
+    const u = await ghl('PUT', `/locations/${locationId}/customValues/${existing.id}`, { body: { name: existing.name || target.name, value } });
+    return { name: target.name, action: 'update', ok: u.ok, status: u.status, reason: u.ok ? '' : String(u.data?.message || '').slice(0, 100) };
   }
-  const c = await ghlPost(`/locations/${locationId}/customValues`, { name: 'plan_tier', value: val });
-  return { ran: true, ok: c.ok, status: c.status, action: 'create', value: val, reason: c.ok ? '' : String(c.data?.message || '').slice(0, 120) };
+  const c = await ghlPost(`/locations/${locationId}/customValues`, { name: target.name, value });
+  return { name: target.name, action: 'create', ok: c.ok, status: c.status, reason: c.ok ? '' : String(c.data?.message || '').slice(0, 100) };
+}
+
+async function setListingCustomValues(locationId, order) {
+  if (!locationId) return { ran: false, reason: 'no locationId' };
+  const first = (order.listings && order.listings[0]) || {};
+  const tier = order.tier === 'pro' ? 'pro' : 'basic';
+  const displayName = (String(first.assistant || order.assistant || '').trim()) || 'Ava';
+  const targets = [
+    { name: 'Agent Display Name',  keyFrag: 'agent_display_name',  value: displayName },
+    { name: 'Realtor Name',        keyFrag: 'realtor_name',        value: String(order.name || '').trim() },
+    { name: 'Agent Business Name', keyFrag: 'agent_business_name', value: String(order.company || order.name || '').trim() },
+    { name: 'Listing Address',     keyFrag: 'listing_address',     value: String(first.address || '').trim() },
+    { name: 'Listing Details',     keyFrag: 'listing_details',     value: listingDetailsText(first) },
+    { name: 'plan_tier',           keyFrag: 'plan_tier',           value: tier },
+  ];
+  // Snapshot plants keys async — poll until most appear so we UPDATE rather than duplicate.
+  let cvs = [];
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const list = await ghlGet(`/locations/${locationId}/customValues`);
+    if (list.ok) {
+      cvs = Array.isArray(list.data?.customValues) ? list.data.customValues : (Array.isArray(list.data) ? list.data : []);
+      const have = targets.filter(t => cvs.some(c => cvNorm(c.name).includes(t.keyFrag) || String(c.fieldKey || c.key || '').toLowerCase().includes(t.keyFrag))).length;
+      if (have >= 5) break;
+    }
+    if (attempt < 3) await new Promise(r => setTimeout(r, 2500));
+  }
+  const results = [];
+  for (const t of targets) results.push(await upsertCustomValue(cvs, locationId, t, t.value));
+  return { ran: true, ok: results.every(r => r.ok), count: results.length, results };
 }
 
 // 2) upsert order contact
@@ -223,10 +269,10 @@ function buildWelcomeEmailHtml(v) {
   const trialEndStr = v.trial_end ? new Date(Number(v.trial_end) * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
   const credsInner = userExists
     ? `Username: ${username}<br><span style="color:#5a6677;">You already have a OneVoice login for this email &mdash; sign in with your existing password.</span>`
-    : `Username: ${username}<br>Temporary password: ${tempPw}`;
+    : `Username: ${username}<br><span style="color:#5a6677;">Use the button below to set your password and log in.</span>`;
   const credsNote = userExists
     ? `Forgot your password? Reset it from the login page.`
-    : `Set your own password on first login.`;
+    : `First time in? You'll create your password and confirm a quick verification code &mdash; no temporary password needed.`;
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;margin:0;padding:0;">
   <tr><td align="center" style="padding:0;">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
@@ -376,11 +422,9 @@ export default async function handler(req, res) {
       }
     } catch (e) { scoreGate = { ran: true, ok: false, reason: e.message }; }
 
-    // 2b2) set plan_tier custom value (all plans) so the post-call workflow gates the score to Pro
-    let planTier = { ran: false, reason: 'not provisioned' };
-    try {
-      if (prov.provisioned && prov.locationId) planTier = await setPlanTier(prov.locationId, order.tier);
-    } catch (e) { planTier = { ran: true, ok: false, reason: e.message }; }
+    // 2b2) custom values (agent identity + listing + plan_tier) are populated AFTER
+    //      agent provisioning below, once the snapshot has planted its CV keys.
+    let cvSet = { ran: false, reason: 'not provisioned' };
 
     // 2c) AGENTS (#49): re-prompt listing #1's snapshot agent + build a Voice AI
     //     agent for listings 2..N inside the new sub-account. Runs for ALL orders
@@ -396,6 +440,14 @@ export default async function handler(req, res) {
         agents = { ok: true, reason: 'order not provisioned' };
       }
     } catch (e) { agents = { ok: false, reason: e.message }; }
+
+    // 2c2) populate the sub-account custom values the agent prompt + post-call workflow
+    //      read (agent_display_name, realtor_name, agent_business_name, listing_address,
+    //      listing_details, plan_tier). Runs AFTER agents so the snapshot's async CV keys
+    //      exist and we UPDATE them (no blank-greeting agent, no duplicate plan_tier).
+    try {
+      if (prov.provisioned && prov.locationId) cvSet = await setListingCustomValues(prov.locationId, order);
+    } catch (e) { cvSet = { ran: true, ok: false, reason: e.message }; }
 
     // 3) idempotency marker on the customer (so retries don't double-charge/provision)
     if (customer) {
@@ -427,7 +479,7 @@ export default async function handler(req, res) {
       opportunity_ok: fulfill.opportunity?.ok || false, opportunity_reason: fulfill.opportunity?.reason || '',
       pipeline: fulfill.opportunity?.pipeline || '', stage: fulfill.opportunity?.stage || '',
       basic_score_gate: scoreGate,
-      plan_tier: planTier,
+      custom_values: cvSet,
       multi_listing_agents: agents,
     });
   } catch (err) {
