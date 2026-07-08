@@ -180,6 +180,39 @@ async function linkLCPhone(locationId) {
   return { ok: false, attempts };
 }
 
+
+// FOUNDER ALERT (#53 fallback): the LC Phone "Link to LeadConnector" endpoint is
+// INTERNAL-ONLY (agency PIT, OAuth company + minted location tokens all get 401
+// "not authorized for this scope" - verified Jul 8 2026). Until GHL exposes a
+// public scope, provisioning cannot link LC Phone itself, and an unlinked account
+// cannot buy a number. So on every real order where the auto-link fails, email the
+// founder an ACTION-NEEDED with the exact one-click path. Best-effort, never blocks.
+const FOUNDER_ALERT_EMAIL = process.env.FOUNDER_ALERT_EMAIL || 'frazierlee@gmail.com';
+async function sendFounderLCPhoneAlert(order, locationId, lcPhone) {
+  try {
+    const up = await ghlPostLoc('/contacts/upsert', {
+      locationId: ORDERS_LOCATION_ID, email: FOUNDER_ALERT_EMAIL, firstName: 'Lee', lastName: 'Frazier',
+      name: 'Lee Frazier', source: 'OneVoice system alerts', tags: ['onevoice-founder-alert'],
+    });
+    const contactId = up.data?.contact?.id || up.data?.id || '';
+    if (!contactId) return { ok: false, reason: 'no founder contact' };
+    const html = `<p><b>ACTION NEEDED - new OneVoice customer cannot get a phone number yet.</b></p>
+<p>Customer: <b>${esc(order.company || order.name || order.email)}</b> (${esc(order.email)})<br>
+New sub-account: <b>${esc(locationId)}</b></p>
+<p>The LC Phone auto-link failed (GHL has no public API for it). Do this now (~10 seconds):</p>
+<ol>
+<li>Open <a href="https://app.gohighlevel.com/settings/phone_integration">Agency Settings &rarr; Phone Integration</a> &rarr; <b>Sub Account Settings</b> tab</li>
+<li>Find the new account &rarr; click the <b>&#8942;</b> menu on its row &rarr; <b>Link to LeadConnector</b></li>
+<li>Managed By should turn to <b>&#10003; LC Phone</b> - done. The customer can now buy their number.</li>
+</ol>
+<p style="color:#888;font-size:12px;">Attempts: ${esc(JSON.stringify(lcPhone && lcPhone.attempts || []))}</p>`;
+    const body = { type: 'Email', contactId, subject: `ACTION NEEDED: link LC Phone for ${order.company || order.email}`, html };
+    if (process.env.GHL_EMAIL_FROM) body.emailFrom = process.env.GHL_EMAIL_FROM;
+    const r = await ghlPostLoc('/conversations/messages', body, { version: V_CONV });
+    return { ok: r.ok, status: r.status };
+  } catch (e) { return { ok: false, reason: e.message }; }
+}
+
 // 1b) BASIC-plan gate: hide scoring by deleting the score custom fields from the
 //     new sub-account, so the Lead Score columns drop out of the customer's Leads
 //     list (Pro-only feature). Best-effort: the snapshot loads its fields async, so
@@ -451,6 +484,9 @@ export default async function handler(req, res) {
     // 2a) link LC Phone so the customer can actually buy their number (#53)
     let lcPhone = { ok: false, reason: 'not provisioned' };
     try { if (prov.provisioned && prov.locationId) lcPhone = await linkLCPhone(prov.locationId); } catch (e) { lcPhone = { ok: false, reason: e.message }; }
+    if (prov.provisioned && prov.locationId && !lcPhone.ok) {
+      lcPhone.founderAlert = await sendFounderLCPhoneAlert(order, prov.locationId, lcPhone);
+    }
 
     // 2b) BASIC plan: hide scoring (delete the score fields so they drop from the Leads list)
     let scoreGate = { ran: false, reason: 'not basic' };
