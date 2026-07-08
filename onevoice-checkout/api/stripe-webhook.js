@@ -213,6 +213,14 @@ function buildWelcomeEmailHtml(v) {
   const loginUrl = esc(v.login_url || LOGIN_URL), plan = esc(v.plan || 'Basic'), count = esc(v.count || 1);
   const term = esc(v.term || 'monthly'), amount = esc(v.amount_today || '0.00');
   const userExists = !!v.user_exists;
+  // What they bought: the recurring plan price + when the free trial converts.
+  const tierKey = (v.tier || 'basic'), cnt = parseInt(v.count || 1) || 1;
+  const pr = PRICE[tierKey] || PRICE.basic;
+  const monthlyDollars = ((pr.base + pr.add * (cnt - 1)) / 100).toFixed(0);
+  const recurringDollars = v.recurring_cents ? (v.recurring_cents / 100).toFixed(0) : '';
+  const termWord = { monthly: 'month', quarter: 'quarter', annual: 'year' }[v.term] || 'month';
+  const isMonthly = (v.term || 'monthly') === 'monthly';
+  const trialEndStr = v.trial_end ? new Date(Number(v.trial_end) * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
   const credsInner = userExists
     ? `Username: ${username}<br><span style="color:#5a6677;">You already have a OneVoice login for this email &mdash; sign in with your existing password.</span>`
     : `Username: ${username}<br>Temporary password: ${tempPw}`;
@@ -255,9 +263,10 @@ function buildWelcomeEmailHtml(v) {
           <tr><td style="padding:16px 18px;">
             <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:10px;">Your order</div>
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#1A2233;">
-              <tr><td style="padding:4px 0;color:#5a6677;">Plan</td><td align="right" style="padding:4px 0;font-weight:600;">OneVoice ${plan} &middot; ${count} listing(s) &middot; ${term}</td></tr>
-              <tr><td style="padding:4px 0;color:#5a6677;">Charged today (one-time setup)</td><td align="right" style="padding:4px 0;font-weight:700;">$${amount}</td></tr>
-              <tr><td style="padding:4px 0;color:#5a6677;">Plan billing</td><td align="right" style="padding:4px 0;font-weight:600;">After your 7-day free trial</td></tr>
+              <tr><td style="padding:4px 0;color:#5a6677;">Plan</td><td align="right" style="padding:4px 0;font-weight:600;">OneVoice ${plan} &middot; ${count} listing(s)</td></tr>
+              <tr><td style="padding:4px 0;color:#5a6677;">Due today (one-time setup fee)</td><td align="right" style="padding:4px 0;font-weight:700;">$${amount}</td></tr>
+              <tr><td style="padding:4px 0;color:#5a6677;">Plan price after trial</td><td align="right" style="padding:4px 0;font-weight:700;color:#0B8C80;">$${monthlyDollars}/mo${isMonthly ? '' : ` &middot; billed $${recurringDollars}/${termWord}`}</td></tr>
+              <tr><td style="padding:4px 0;color:#5a6677;">7-day free trial${trialEndStr ? ` (ends ${trialEndStr})` : ''}</td><td align="right" style="padding:4px 0;font-weight:600;">First plan charge ${trialEndStr || 'after trial'}</td></tr>
             </table>
           </td></tr>
         </table>
@@ -352,6 +361,8 @@ export default async function handler(req, res) {
     let subRes = { ok: false, reason: 'skipped' };
     try { subRes = await createTrialingSubscription(s, order); } catch (e) { subRes = { ok: false, reason: e.message }; }
     order.stripe_subscription = subRes.subId || '';
+    order.recurring_cents = subRes.recurring || 0;
+    order.trial_end = subRes.trialEnd || 0;
 
     // 2) provision listing #1 (GHL sub-account + login user)
     let prov = { provisioned: false, reason: 'skipped' };
@@ -371,16 +382,18 @@ export default async function handler(req, res) {
       if (prov.provisioned && prov.locationId) planTier = await setPlanTier(prov.locationId, order.tier);
     } catch (e) { planTier = { ran: true, ok: false, reason: e.message }; }
 
-    // 2c) MULTI-LISTING (#49): build a Voice AI agent for listings 2..N inside the
-    //     new sub-account. Best-effort + graceful — needs the OAuth Sub-Account app
-    //     + KV configured; if either is missing it returns a reason and NEVER blocks
-    //     the order. Single-listing orders skip it entirely.
+    // 2c) AGENTS (#49): re-prompt listing #1's snapshot agent + build a Voice AI
+    //     agent for listings 2..N inside the new sub-account. Runs for ALL orders
+    //     (count>=1) so even a single listing gets its agent personalized with the
+    //     real listing details. Best-effort + graceful — needs the OAuth Sub-Account
+    //     app + KV; if either is missing it returns a reason and NEVER blocks the
+    //     order. resolveTemplate polls for the snapshot agent to avoid the load race.
     let agents = { ok: true, reason: 'skipped' };
     try {
-      if (prov.provisioned && prov.locationId && count > 1) {
+      if (prov.provisioned && prov.locationId && count >= 1) {
         agents = await provisionAgentsForOrder({ locationId: prov.locationId, order, sessionId: s.id });
       } else {
-        agents = { ok: true, reason: count > 1 ? 'order not provisioned' : 'single listing (no extra agents)' };
+        agents = { ok: true, reason: 'order not provisioned' };
       }
     } catch (e) { agents = { ok: false, reason: e.message }; }
 
