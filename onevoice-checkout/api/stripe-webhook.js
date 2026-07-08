@@ -146,6 +146,40 @@ async function provisionFirstListing(order) {
   };
 }
 
+
+// 2a) LC PHONE LINK (#53): API-created sub-accounts are NOT linked to the LC Phone
+//     system (the agency "Automatically Link Phone System" default does not fire
+//     for /locations/ API creates - verified live Jul 8 2026), so the customer's
+//     Phone System shows "requires configuration" and they can never buy a number.
+//     This replicates the agency UI's "Link to LeadConnector" action (endpoint
+//     captured live from the agency console). Tries the agency PIT first, then the
+//     stored OAuth Company token. Best-effort: never blocks the order.
+async function linkLCPhone(locationId) {
+  if (!locationId) return { ok: false, reason: 'no locationId' };
+  const attempts = [];
+  const tryToken = async (label, token) => {
+    if (!token) { attempts.push({ label, skipped: 'no token' }); return false; }
+    try {
+      const r = await fetch(`${GHL_BASE}/conversations/providers/twilio/setup/subaccount?locationId=${encodeURIComponent(locationId)}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Version': V_MAIN, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: '{}',
+      });
+      let data = {}; try { data = await r.json(); } catch { data = {}; }
+      attempts.push({ label, status: r.status, msg: String(data.message || data.error || '').slice(0, 120) });
+      return r.ok;
+    } catch (e) { attempts.push({ label, error: e.message }); return false; }
+  };
+  if (await tryToken('agency-pit', process.env.GHL_AGENCY_TOKEN)) return { ok: true, via: 'agency-pit', attempts };
+  try {
+    const { getCompanyToken } = await import('../lib/ghlTokens.js');
+    const ct = await getCompanyToken();
+    if (ct && ct.token && await tryToken('oauth-company', ct.token)) return { ok: true, via: 'oauth-company', attempts };
+    if (!ct || !ct.token) attempts.push({ label: 'oauth-company', skipped: ct && ct.reason ? ct.reason : 'no company token' });
+  } catch (e) { attempts.push({ label: 'oauth-company', error: e.message }); }
+  return { ok: false, attempts };
+}
+
 // 1b) BASIC-plan gate: hide scoring by deleting the score custom fields from the
 //     new sub-account, so the Lead Score columns drop out of the customer's Leads
 //     list (Pro-only feature). Best-effort: the snapshot loads its fields async, so
@@ -414,6 +448,10 @@ export default async function handler(req, res) {
     let prov = { provisioned: false, reason: 'skipped' };
     try { prov = await provisionFirstListing(order); } catch (e) { prov = { provisioned: false, reason: e.message }; }
 
+    // 2a) link LC Phone so the customer can actually buy their number (#53)
+    let lcPhone = { ok: false, reason: 'not provisioned' };
+    try { if (prov.provisioned && prov.locationId) lcPhone = await linkLCPhone(prov.locationId); } catch (e) { lcPhone = { ok: false, reason: e.message }; }
+
     // 2b) BASIC plan: hide scoring (delete the score fields so they drop from the Leads list)
     let scoreGate = { ran: false, reason: 'not basic' };
     try {
@@ -478,6 +516,7 @@ export default async function handler(req, res) {
       email_ok: fulfill.email?.ok || false, email_reason: fulfill.email?.reason || '',
       opportunity_ok: fulfill.opportunity?.ok || false, opportunity_reason: fulfill.opportunity?.reason || '',
       pipeline: fulfill.opportunity?.pipeline || '', stage: fulfill.opportunity?.stage || '',
+      lc_phone_link: lcPhone,
       basic_score_gate: scoreGate,
       custom_values: cvSet,
       multi_listing_agents: agents,
