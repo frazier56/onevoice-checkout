@@ -47,6 +47,8 @@
   .mng{display:flex;gap:10px;flex-wrap:wrap;padding:6px 22px 18px}
   .mng button{font-size:12.5px;font-weight:700;border-radius:8px;padding:9px 14px;cursor:pointer;border:1.5px solid var(--teal-d);background:#fff;color:var(--teal-d)}
   .mng button.primary{background:var(--teal-d);color:#fff}
+  .rowbtn{font-size:11px;font-weight:700;border-radius:7px;padding:5px 9px;cursor:pointer;border:1.2px solid var(--teal-d);background:#fff;color:var(--teal-d)}
+  .rowbtn.danger{border-color:#d9822b;color:#b45309}
   .calls .row-main{cursor:pointer}
   .cdet{background:#fbfcfe;border-top:1px dashed var(--line)}
   .cdet td{padding:12px 22px}
@@ -93,9 +95,12 @@
   function hdr(d){return '<div class="hdr"><div><h1>'+esc(d.company||'Your account')+'</h1><p>'+(d.realtor?esc(d.realtor)+' · ':'')+'OneVoice AI receptionist</p></div><div style="display:flex;align-items:center;gap:10px">'+(d.planTier?'<span class="badge">OneVoice '+(d.planTier==='pro'?'Pro':'Basic')+'</span>':'')+'<div class="logo">One<span>Voice</span></div></div></div>';}
 
   function stepsHtml(d){
+    if(localStorage.getItem('ov_setup_hidden')==='1'){
+      return '<div class="sec-h" style="padding:12px 22px 14px"><div style="display:flex;align-items:center;gap:10px"><span class="chk" style="background:var(--ok);border-color:var(--ok)">✓</span><h2 style="font-size:14px">You’re set up — your AI answers every call.</h2><a href="#" id="showSteps" style="font-size:12px;color:var(--teal-d);font-weight:700">Show the steps again</a></div></div>';
+    }
     var s1=d.steps&&d.steps.numberBought, s2=d.steps&&d.steps.aiConnected, s3=localStorage.getItem('ov_app_done')==='1';
     function box(n,done,title,body,btns){return '<div class="step'+(done?' done':'')+'"><div class="top"><span class="chk">'+(done?'✓':'')+'</span><div><div class="stepnum">Step '+n+'</div><h3>'+title+'</h3></div></div><p>'+body+'</p>'+btns+'</div>';}
-    return '<div class="sec-h" style="border-bottom:none"><div><div class="kicker">Getting set up</div><h2>Three quick steps and your AI is answering buyers 24/7</h2></div></div><div class="steps">'
+    return '<div class="sec-h" style="border-bottom:none"><div><div class="kicker">Getting set up</div><h2>Three quick steps and your AI is answering buyers 24/7</h2></div><a href="#" id="hideSteps" title="Hide this section" style="font-size:12px;color:var(--mut);font-weight:700;white-space:nowrap">✕ Hide</a></div><div class="steps">'
       +box(1,s1,'Get your free phone number','Pick any local number — takes about 2 minutes and it\'s on us. If a "Register for A2P" box pops up, just close it (you don\'t need it).','<a class="cta" target="_top" href="'+GHL+'/settings/phone_number">Pick my number →</a><a class="cta ghost" target="_blank" href="https://onevoice-checkout.vercel.app/assign-number.html">See the picture guide</a>')
       +box(2,s2,'Connect your number to your AI','One click — we wire your new number to your assistant automatically. From that moment your AI answers every call.','<button class="cta" id="connectBtn">Connect my number now</button>')
       +box(3,s3,'Take it everywhere','Download the LeadConnector app and log in with this same email — every call, transcript and lead lands on your phone.','<a class="cta" target="_blank" id="appBtn" href="https://apps.apple.com/app/lead-connector/id1564302502">Get the app</a>')
@@ -108,12 +113,13 @@
       return '<tr><td class="addr" data-edit="'+i+'" title="Click to update this listing\'s details">'+esc(l.address)+'</td>'
         +'<td><span class="agent" data-rename="'+i+'" title="Click to rename your assistant"><span class="av">'+ini+'</span><span class="nm">'+esc(l.agent)+'</span></span></td>'
         +'<td class="num">'+(l.number?esc(fmt(l.number)):'—')+'</td>'
-        +'<td>'+(l.live?'<span class="pill live">● Answering 24/7</span>':'<span class="pill wait">Waiting for number</span>')+'</td></tr>';
+        +'<td>'+(l.live?'<span class="pill live">● Answering 24/7</span>':'<span class="pill wait">Waiting for number</span>')+'</td>'
+        +'<td style="white-space:nowrap"><button class="rowbtn" data-mng="replace" data-idx="'+i+'">Replace</button> <button class="rowbtn danger" data-mng="cancel" data-idx="'+i+'">Cancel</button></td></tr>';
     }).join('');
-    var body = rows ? '<table><thead><tr><th>Listing</th><th>AI agent</th><th>Phone number</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table><div class="hint">Tip: click a <b>listing</b> to update its details (price, beds, showings…) — click your <b>agent\'s name</b> to rename them.</div>'
+    var body = rows ? '<table><thead><tr><th>Listing address</th><th>AI agent</th><th>Phone number</th><th>Status</th><th></th></tr></thead><tbody>'+rows+'</tbody></table><div class="hint">Tip: click a <b>listing</b> to update its details (price, beds, showings…) — click your <b>agent\'s name</b> to rename them.</div>'
       : '<div class="empty">Your AI assistant will appear here as soon as your account finishes setting up.</div>';
     return '<div class="sec-h"><div><div class="kicker">Your listings</div><h2>Every listing, its AI agent, and the number buyers call</h2></div></div>'+body
-      +'<div class="sec-h" style="padding-top:4px"><div><div class="kicker">Manage</div></div></div><div class="mng"><button class="primary" data-mng="add">+ Add a listing</button><button data-mng="replace">Replace a listing</button><button data-mng="cancel">Cancel a listing</button></div>';
+      +'<div class="sec-h" style="padding-top:4px"><div><div class="kicker">Manage</div></div></div><div class="mng"><button class="primary" data-mng="add">+ Add a listing</button><button data-mng="plan">Manage my plan</button></div>';
   }
 
   function callsHtml(d){
@@ -142,7 +148,7 @@
       +'<div class="fld"><label>Asking price</label><input id="f_price" placeholder="$329,000"></div>'
       +'<div class="two"><div class="fld"><label>Beds</label><input id="f_beds" placeholder="3"></div><div class="fld"><label>Baths</label><input id="f_baths" placeholder="2"></div><div class="fld"><label>Sq ft</label><input id="f_sqft" placeholder="1,850"></div></div>'
       +'<div class="fld"><label>Showing availability</label><input id="f_showing" placeholder="Sat–Sun 1–4 PM, or by appointment"></div>'
-      +'<div class="fld"><label>Anything else your AI should know</label><textarea id="f_details" rows="3" placeholder="New roof 2024, motivated seller, HOA $95/mo…"></textarea></div></div>'
+      +'<div class="fld"><label>Listing details</label><textarea id="f_details" rows="3" placeholder="New roof 2024, motivated seller, HOA $95/mo…"></textarea></div></div>'
       +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button><button class="cta" id="m_save">Save changes</button></div>');
     document.getElementById('m_save').addEventListener('click',function(){
       var b=this;b.textContent='Saving…';b.disabled=true;
@@ -160,17 +166,24 @@
       post('/api/update-listing',{action:'rename',loc:loc,agentId:l.id,newName:val('f_name')},function(d){flash(d);b.textContent='Save name';b.disabled=false;if(d.ok)setTimeout(load,900);});
     });
   }
-  function manage(kind){
-    var t={add:['Add a listing','Tell us the new property address — we\'ll spin up its AI agent and add it to your plan ($149/mo Basic · $249/mo Pro per extra listing, prorated).'],
-           replace:['Replace a listing','Sold it? Tell us the old and new address — we swap the property, your phone number stays the same. ($49 swap on Pro.)'],
-           cancel:['Cancel a listing','Tell us which listing to retire. Its agent stops answering and your monthly price drops accordingly.']}[kind];
+  function manage(kind, idx){
+    var cur = (idx!=null && D && D.listings && D.listings[idx]) ? D.listings[idx].address : '';
+    var t={add:['Add a listing','Give us the new property’s address and details — we’ll spin up its AI agent and add it to your plan ($149/mo Basic · $249/mo Pro per extra listing; one-time $49 setup; no extra trial).'],
+           replace:['Replace this listing','Sold it? Your phone number and agent stay — we swap in the new property. ($49 swap on Pro.)'],
+           cancel:['Cancel this listing','Its agent stops answering and your monthly price drops accordingly.'],
+           plan:['Manage my plan','Upgrade Basic ↔ Pro, change how you pay (monthly, 3-month, annual), or ask a billing question — we’ll take care of it and confirm before anything changes.']}[kind];
+    var fields='';
+    if(kind==='replace') fields='<div class="fld"><label>Replacing</label><input disabled value="'+esc(cur||'—')+'"></div><div class="fld"><label>New listing address</label><input id="f_listing" placeholder="88 Oak St, Pearl, MS"></div><div class="fld"><label>Listing details</label><textarea id="f_note" rows="3" placeholder="Price, beds/baths, showing times, selling points — this is what your AI tells buyers"></textarea></div>';
+    else if(kind==='cancel') fields='<div class="fld"><label>Cancelling</label>'+(cur?'<input disabled value="'+esc(cur)+'">':'<input id="f_listing" placeholder="Property address">')+'</div><div class="fld"><label>Anything we should know?</label><textarea id="f_note" rows="2" placeholder="Optional"></textarea></div>';
+    else if(kind==='plan') fields='<div class="fld"><label>What would you like to change?</label><textarea id="f_note" rows="3" placeholder="e.g. Upgrade me to Pro / switch me to annual billing"></textarea></div>';
+    else fields='<div class="fld"><label>New listing address</label><input id="f_listing" placeholder="Property address"></div><div class="fld"><label>Listing details</label><textarea id="f_note" rows="3" placeholder="Price, beds/baths, showing times, selling points — this is what your AI tells buyers"></textarea></div>';
     openModal('<div class="m-h"><h3>'+t[0]+'</h3><p>'+t[1]+'</p></div>'
-      +'<div class="m-b"><div class="fld"><label>Listing</label><input id="f_listing" placeholder="'+(kind==='replace'?'Old: 123 Maple Ave → New: 88 Oak St':'Property address')+'"></div>'
-      +'<div class="fld"><label>Anything we should know?</label><textarea id="f_note" rows="2" placeholder="Optional"></textarea></div></div>'
+      +'<div class="m-b">'+fields+'</div>'
       +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button><button class="cta" id="m_save">Send request</button></div>');
     document.getElementById('m_save').addEventListener('click',function(){
       var b=this;b.textContent='Sending…';b.disabled=true;
-      post('/api/manage-request',{loc:loc,action:kind,listing:val('f_listing'),note:val('f_note')},function(d){flash(d);b.textContent='Send request';b.disabled=!!d.ok;});
+      var listing = (kind==='replace'&&cur) ? ('REPLACING: '+cur+' → NEW: '+val('f_listing')) : (cur||val('f_listing'));
+      post('/api/manage-request',{loc:loc,action:kind,listing:listing,note:val('f_note')},function(d){flash(d);b.textContent='Send request';b.disabled=!!d.ok;});
     });
   }
   function val(id){var e=document.getElementById(id);return e?e.value:'';}
@@ -179,7 +192,9 @@
 
   function render(d){
     D=d;
-    if(view==='setup'){ app.innerHTML='<div class="card">'+hdr(d)+stepsHtml(d)+'</div>'; }
+    if(view==='setup'){ app.innerHTML='<div class="card">'+(localStorage.getItem('ov_setup_hidden')==='1'?stepsHtml(d):hdr(d)+stepsHtml(d))+'</div>'; }
+    else if(view==='listings'){ app.innerHTML='<div class="card">'+listingsHtml(d)+'</div>'; }
+    else if(view==='calls'){ app.innerHTML='<div class="card">'+callsHtml(d)+'</div>'; }
     else { app.innerHTML='<div class="card">'+listingsHtml(d)+'</div><div class="card">'+callsHtml(d)+'</div><div class="foot">Questions? Call us at (855) 770-0200 — a specialist will walk you through anything.</div>'; }
     var cb=document.getElementById('connectBtn');
     if(cb)cb.addEventListener('click',function(){var b=this;b.textContent='Connecting…';b.disabled=true;
@@ -188,7 +203,9 @@
     if(ab)ab.addEventListener('click',function(){localStorage.setItem('ov_app_done','1');load();});
     app.querySelectorAll('[data-edit]').forEach(function(e){e.addEventListener('click',function(){editListing(+this.dataset.edit);});});
     app.querySelectorAll('[data-rename]').forEach(function(e){e.addEventListener('click',function(){renameAgent(+this.dataset.rename);});});
-    app.querySelectorAll('[data-mng]').forEach(function(e){e.addEventListener('click',function(){manage(this.dataset.mng);});});
+    app.querySelectorAll('[data-mng]').forEach(function(e){e.addEventListener('click',function(){manage(this.dataset.mng, this.dataset.idx!=null?+this.dataset.idx:null);});});
+    var hs=document.getElementById('hideSteps'); if(hs)hs.addEventListener('click',function(ev){ev.preventDefault();localStorage.setItem('ov_setup_hidden','1');render(D);});
+    var ss=document.getElementById('showSteps'); if(ss)ss.addEventListener('click',function(ev){ev.preventDefault();localStorage.removeItem('ov_setup_hidden');render(D);});
     app.querySelectorAll('[data-call]').forEach(function(e){e.addEventListener('click',function(){var d=document.getElementById('cdet'+this.dataset.call);if(d)d.hidden=!d.hidden;});});
   }
   function load(){
