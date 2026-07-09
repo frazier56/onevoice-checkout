@@ -68,9 +68,19 @@ export default async function handler(req, res) {
 
     // Calls / leads feed: contacts the AI wrote after each call, newest first
     out.calls = [];
-    if (lt.ok && lt.token) {
-      const cr = await call(lt.token, `/contacts/?locationId=${loc}&limit=20`);
-      const contacts = cr.data?.contacts || [];
+    {
+      let contacts = [], st = [];
+      if (lt.ok && lt.token) {
+        const cr = await call(lt.token, `/contacts/?locationId=${loc}&limit=20`);
+        st.push('loc:' + cr.status);
+        contacts = cr.data?.contacts || [];
+      }
+      if (!contacts.length) {
+        const cr2 = await call(A, `/contacts/?locationId=${loc}&limit=20`);
+        st.push('agency:' + cr2.status);
+        if (cr2.ok) contacts = cr2.data?.contacts || [];
+      }
+      out.contactsVia = st.join(' ');
       const fld = (c, key) => {
         const arr = c.customFields || c.customField || [];
         for (const f of arr) { if ((f.key || f.fieldKey || '').toLowerCase().includes(key)) return f.value || f.field_value || ''; }
