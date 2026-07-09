@@ -9,6 +9,7 @@ const ORDERS_LOCATION_ID = process.env.GHL_ORDERS_LOCATION_ID || 'VkZwS3nGWMX06N
 const LOCATION_TOKEN = process.env.GHL_LOCATION_TOKEN || process.env.GHL_AGENCY_TOKEN;
 const FOUNDER_EMAIL = process.env.FOUNDER_ALERT_EMAIL || 'frazierlee@gmail.com';
 const FOUNDER_PHONE = process.env.FOUNDER_ALERT_PHONE || '+17705521868';
+const FOUNDER_SMS_FROM = process.env.FOUNDER_SMS_FROM || '+12172909970';
 
 async function call(token, method, path, body, version) {
   const r = await fetch(`${GHL}${path}`, {
@@ -49,7 +50,7 @@ export default async function handler(req, res) {
     let email = { ok: false }, sms = { ok: false };
     if (contactId) {
       email = await call(LOCATION_TOKEN, 'POST', '/conversations/messages', { type: 'Email', contactId, subject: `OneVoice request: ${label} - ${L.name || loc}`, html }, V_CONV);
-      sms = await call(LOCATION_TOKEN, 'POST', '/conversations/messages', { type: 'SMS', contactId, toNumber: FOUNDER_PHONE, message: `OneVoice: ${L.name || loc} wants to ${label}. ${listing ? 'Listing: ' + listing + '. ' : ''}${note ? 'Note: ' + note : ''}` }, V_CONV);
+      sms = await call(LOCATION_TOKEN, 'POST', '/conversations/messages', { type: 'SMS', contactId, toNumber: FOUNDER_PHONE, fromNumber: FOUNDER_SMS_FROM, message: `OneVoice: ${L.name || loc} wants to ${label}. ${listing ? 'Listing: ' + listing + '. ' : ''}${note ? 'Note: ' + note : ''}` }, V_CONV);
     }
     return res.status(200).json({ ok: true, message: "Request received! We'll take care of it and confirm with you shortly - usually within a few hours.", emailSent: email.ok, smsSent: sms.ok });
   } catch (e) {

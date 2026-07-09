@@ -238,5 +238,37 @@ export default async function handler(req, res) {
     out.assignnums = resAn;
   }
 
+
+  // DEDUPE VOICE AI AGENTS: &dedupeagents=<locationId> (&dry=1 to preview)
+  // Deletes duplicate agents sharing the same agentName (keeps the FIRST);
+  // cleanup for the webhook-retry residue (e.g. 10x "Ava - same").
+  if (req.query.dedupeagents) {
+    const locId = String(req.query.dedupeagents);
+    const resDp = { ran: true, kept: [], deleted: [], errors: [] };
+    try {
+      const lt = await getLocationToken(locId);
+      if (!lt.ok || !lt.token) { resDp.errors.push('no location token: ' + (lt.reason || '')); }
+      else {
+        const call2 = async (method, path) => {
+          const r = await fetch(`https://services.leadconnectorhq.com${path}`, { method, headers: { 'Authorization': `Bearer ${lt.token}`, 'Version': '2021-07-28', 'Accept': 'application/json' } });
+          let d = {}; try { d = await r.json(); } catch { d = {}; }
+          return { ok: r.ok, status: r.status, data: d };
+        };
+        const ar = await call2('GET', `/voice-ai/agents?locationId=${locId}`);
+        const agents = ar.data?.agents || (Array.isArray(ar.data) ? ar.data : []);
+        const seen = {};
+        for (const a of agents) {
+          const nm = (a.agentName || a.name || '').trim();
+          if (!seen[nm]) { seen[nm] = a.id; resDp.kept.push({ id: a.id, name: nm }); continue; }
+          if (req.query.dry) { resDp.deleted.push({ id: a.id, name: nm, action: 'dry-run' }); continue; }
+          const d = await call2('DELETE', `/voice-ai/agents/${a.id}?locationId=${locId}`);
+          resDp.deleted.push({ id: a.id, name: nm, action: d.ok ? 'deleted' : `failed ${d.status}` });
+          if (!d.ok) resDp.errors.push(`${a.id}: ${d.status}`);
+        }
+      }
+    } catch (e) { resDp.errors.push(e.message); }
+    out.dedupeagents = resDp;
+  }
+
   return res.status(200).json(out);
 }
