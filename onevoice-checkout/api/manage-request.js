@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   const q = { ...(req.query || {}), ...(typeof req.body === 'object' && req.body ? req.body : {}) };
   const loc = clean(q.loc, 32), action = clean(q.action, 12).toLowerCase();
   const listing = clean(q.listing, 120), note = clean(q.note, 500);
-  if (!/^[A-Za-z0-9]{15,32}$/.test(loc) || !['add', 'cancel', 'replace'].includes(action)) {
+  if (!/^[A-Za-z0-9]{15,32}$/.test(loc) || !['add', 'cancel', 'replace', 'plan'].includes(action)) {
     return res.status(400).json({ ok: false, message: 'missing loc/action' });
   }
   try {
@@ -42,7 +42,7 @@ export default async function handler(req, res) {
       source: 'OneVoice manage requests', tags: ['onevoice-manage-request'],
     });
     const contactId = up.data?.contact?.id || up.data?.id || '';
-    const label = { add: 'ADD a listing', cancel: 'CANCEL a listing', replace: 'REPLACE/SWAP a listing' }[action];
+    const label = { add: 'ADD a listing', cancel: 'CANCEL a listing', replace: 'REPLACE/SWAP a listing', plan: 'CHANGE their PLAN' }[action];
     const html = `<p><b>Customer dashboard request: ${label}</b></p>
 <p>Customer: <b>${who}</b><br>Location: ${loc}<br>Listing: ${listing || '-'}<br>Note: ${note || '-'}</p>
 <p>Fulfill: adjust their Stripe subscription + provision/retire the agent, then confirm with the customer.</p>`;
