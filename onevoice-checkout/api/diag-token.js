@@ -177,5 +177,66 @@ export default async function handler(req, res) {
     out.lockdown = resLd;
   }
 
+
+  // #47 AUTO-ASSIGN NUMBER->AGENT: &assignnums=<locationId> (&dry=1 to preview)
+  // Finds the location's purchased phone number(s) and PATCHes any Voice AI agent
+  // that has no inboundNumber. Probes multiple number-list endpoints (public API
+  // path for phonenumbers.read is undocumented) and reports what worked.
+  if (req.query.assignnums) {
+    const locId = String(req.query.assignnums);
+    const resAn = { ran: true, numbers: [], agents: [], updated: 0, probes: [], errors: [] };
+    try {
+      const lt = await getLocationToken(locId);
+      if (!lt.ok || !lt.token) { resAn.errors.push('no location token: ' + (lt.reason || '')); out.assignnums = resAn; return res.status(200).json(out); }
+      const agencyTok = process.env.GHL_AGENCY_TOKEN;
+      const call = async (label, token, method, path, body) => {
+        try {
+          const r = await fetch(`https://services.leadconnectorhq.com${path}`, {
+            method, headers: { 'Authorization': `Bearer ${token}`, 'Version': '2021-07-28', 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: body ? JSON.stringify(body) : undefined,
+          });
+          let d = {}; try { d = await r.json(); } catch { d = {}; }
+          resAn.probes.push({ label, status: r.status });
+          return { ok: r.ok, status: r.status, data: d };
+        } catch (e) { resAn.probes.push({ label, error: e.message }); return { ok: false, data: {} }; }
+      };
+      // 1) find numbers - try location token then agency token on known path shapes
+      const numberPaths = [
+        ['loc:numbers/location', lt.token, `/phone-system/numbers/location/${locId}`],
+        ['agency:numbers/location', agencyTok, `/phone-system/numbers/location/${locId}`],
+        ['loc:numbers?locationId', lt.token, `/phone-system/numbers?locationId=${locId}`],
+      ];
+      let nums = [];
+      for (const [label, token, path] of numberPaths) {
+        const r = await call(label, token, 'GET', path);
+        if (r.ok) {
+          const arr = r.data.numbers || r.data.phoneNumbers || (Array.isArray(r.data) ? r.data : []);
+          if (arr.length) { nums = arr; resAn.numbersVia = label; break; }
+          if (!resAn.numbersVia) resAn.numbersVia = label + ' (empty)';
+        }
+      }
+      resAn.numbers = nums.map(n => n.phoneNumber || n.number || n.friendlyName || JSON.stringify(n).slice(0, 60));
+      // 2) list agents
+      const ag = await call('agents:list', lt.token, 'GET', `/voice-ai/agents?locationId=${locId}`);
+      const agents = ag.data?.agents || (Array.isArray(ag.data) ? ag.data : []) || [];
+      for (const a of agents) {
+        const entry = { id: a.id, name: a.agentName || a.name, inboundNumber: a.inboundNumber || a.inboundPhoneNumber || null };
+        resAn.agents.push(entry);
+      }
+      // 3) assign first free number to first agent without a number
+      const freeNum = resAn.numbers[0];
+      const bare = resAn.agents.filter(a => !a.inboundNumber);
+      if (freeNum && bare.length && !req.query.dry) {
+        for (const a of bare.slice(0, resAn.numbers.length)) {
+          let u = await call('agent:put', lt.token, 'PUT', `/voice-ai/agents/${a.id}`, { locationId: locId, inboundNumber: freeNum });
+          if (!u.ok && (u.status === 404 || u.status === 405)) u = await call('agent:patch', lt.token, 'PATCH', `/voice-ai/agents/${a.id}`, { locationId: locId, inboundNumber: freeNum });
+          a.assign = u.ok ? `assigned ${freeNum}` : `failed ${u.status}: ${JSON.stringify(u.data).slice(0, 140)}`;
+          if (u.ok) resAn.updated++;
+        }
+      }
+    } catch (e) { resAn.errors.push(e.message); }
+    out.assignnums = resAn;
+  }
+
   return res.status(200).json(out);
 }
