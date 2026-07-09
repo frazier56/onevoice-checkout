@@ -88,5 +88,32 @@ export default async function handler(req, res) {
     out.lcphone = { ok: !!via, via, attempts };
   }
 
+  // STRIP SAMPLES on an existing location: &stripsamples=<locationId> (#59 backfill)
+  if (req.query.stripsamples) {
+    const locId = String(req.query.stripsamples);
+    try {
+      const lt = await getLocationToken(locId);
+      if (!lt.ok || !lt.token) { out.stripsamples = { ran: false, reason: lt.reason || 'no token' }; }
+      else {
+        const call = async (method, path) => {
+          const r = await fetch(`https://services.leadconnectorhq.com${path}`, { method, headers: { 'Authorization': `Bearer ${lt.token}`, 'Version': '2021-07-28', 'Accept': 'application/json' } });
+          let d = {}; try { d = await r.json(); } catch { d = {}; }
+          return { ok: r.ok, status: r.status, data: d };
+        };
+        const res2 = { ran: true, contactsDeleted: 0, oppsDeleted: 0, errors: [] };
+        const cs = await call('GET', `/contacts/?locationId=${locId}&query=example&limit=50`);
+        for (const c of ((cs.data && cs.data.contacts) || [])) {
+          const nm = `${c.firstName || ''} ${c.lastName || ''} ${c.contactName || ''}`.toLowerCase();
+          if (nm.includes('example')) { const d = await call('DELETE', `/contacts/${c.id}`); if (d.ok) res2.contactsDeleted++; else res2.errors.push(`c${c.id}:${d.status}`); }
+        }
+        const os = await call('GET', `/opportunities/search?location_id=${locId}&q=example&limit=50`);
+        for (const o of ((os.data && os.data.opportunities) || [])) {
+          if (String(o.name || '').toLowerCase().includes('example')) { const d = await call('DELETE', `/opportunities/${o.id}`); if (d.ok) res2.oppsDeleted++; else res2.errors.push(`o${o.id}:${d.status}`); }
+        }
+        out.stripsamples = res2;
+      }
+    } catch (e) { out.stripsamples = { ran: false, reason: e.message }; }
+  }
+
   return res.status(200).json(out);
 }

@@ -213,6 +213,56 @@ New sub-account: <b>${esc(locationId)}</b></p>
   } catch (e) { return { ok: false, reason: e.message }; }
 }
 
+
+// STRIP GHL SAMPLE DATA (#59): GHL auto-injects "(Example)" contacts, tasks and
+// opportunities into every NEW sub-account (the master is clean - this is platform
+// seeding, not our snapshot). Customers must land clean. Deletes contacts whose
+// name contains "(example)" (their tasks cascade) and opportunities named
+// "(example)". Uses the minted LOCATION token (location-scoped endpoints).
+// Best-effort: never blocks the order.
+async function stripSampleData(locationId) {
+  if (!locationId) return { ran: false, reason: 'no locationId' };
+  let tok;
+  try {
+    const { getLocationToken } = await import('../lib/ghlTokens.js');
+    const lt = await getLocationToken(locationId);
+    if (!lt.ok || !lt.token) return { ran: false, reason: 'no location token: ' + (lt.reason || '') };
+    tok = lt.token;
+  } catch (e) { return { ran: false, reason: e.message }; }
+  const call = async (method, path, body) => {
+    const r = await fetch(`${GHL_BASE}${path}`, {
+      method,
+      headers: { 'Authorization': `Bearer ${tok}`, 'Version': V_MAIN, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let d = {}; try { d = await r.json(); } catch { d = {}; }
+    return { ok: r.ok, status: r.status, data: d };
+  };
+  const out = { ran: true, contactsDeleted: 0, oppsDeleted: 0, errors: [] };
+  try {
+    // contacts: search "example", delete matches with (example) in the name
+    const cs = await call('GET', `/contacts/?locationId=${locationId}&query=example&limit=50`);
+    const list = (cs.data && cs.data.contacts) || [];
+    for (const c of list) {
+      const nm = `${c.firstName || ''} ${c.lastName || ''} ${c.contactName || ''}`.toLowerCase();
+      if (nm.includes('example')) {
+        const d = await call('DELETE', `/contacts/${c.id}`);
+        if (d.ok) out.contactsDeleted++; else out.errors.push(`contact ${c.id}: ${d.status}`);
+      }
+    }
+    // opportunities named (example)
+    const os = await call('GET', `/opportunities/search?location_id=${locationId}&q=example&limit=50`);
+    const opps = (os.data && os.data.opportunities) || [];
+    for (const o of opps) {
+      if (String(o.name || '').toLowerCase().includes('example')) {
+        const d = await call('DELETE', `/opportunities/${o.id}`);
+        if (d.ok) out.oppsDeleted++; else out.errors.push(`opp ${o.id}: ${d.status}`);
+      }
+    }
+  } catch (e) { out.errors.push(e.message); }
+  return out;
+}
+
 // 1b) BASIC-plan gate: hide scoring by deleting the score custom fields from the
 //     new sub-account, so the Lead Score columns drop out of the customer's Leads
 //     list (Pro-only feature). Best-effort: the snapshot loads its fields async, so
@@ -488,6 +538,10 @@ export default async function handler(req, res) {
       lcPhone.founderAlert = await sendFounderLCPhoneAlert(order, prov.locationId, lcPhone);
     }
 
+    // 2a2) strip GHL's auto-injected sample data so the customer lands clean (#59)
+    let samples = { ran: false };
+    try { if (prov.provisioned && prov.locationId) samples = await stripSampleData(prov.locationId); } catch (e) { samples = { ran: false, reason: e.message }; }
+
     order.login_url = prov.login?.loginUrl || LOGIN_URL;
     order.username = prov.login?.username || order.email;
     order.temp_password = prov.login?.tempPassword || '';
@@ -555,6 +609,7 @@ export default async function handler(req, res) {
       opportunity_ok: fulfill.opportunity?.ok || false, opportunity_reason: fulfill.opportunity?.reason || '',
       pipeline: fulfill.opportunity?.pipeline || '', stage: fulfill.opportunity?.stage || '',
       lc_phone_link: lcPhone,
+      sample_data_strip: samples,
       basic_score_gate: scoreGate,
       custom_values: cvSet,
       multi_listing_agents: agents,
