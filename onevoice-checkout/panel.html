@@ -2,28 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OneVoice — Your Listings</title>
+<title>OneVoice</title>
 <style>
-  :root{--teal:#15C2B2;--teal-d:#0B8C80;--ink:#1A2233;--mut:#5a6677;--line:#e8ebf1;--bg:#f7f9fb;--ok:#12a150;}
+  :root{--teal:#15C2B2;--teal-d:#0B8C80;--ink:#1A2233;--mut:#5a6677;--line:#e8ebf1;--ok:#12a150;--warn:#b45309;}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:Inter,-apple-system,'Segoe UI',Roboto,sans-serif;background:transparent;color:var(--ink);padding:4px 2px}
-  .wrap{max-width:1180px;margin:0 auto;display:grid;gap:14px}
+  .wrap{max-width:1280px;margin:0 auto;display:grid;gap:14px}
   .card{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
-  /* header */
-  .hdr{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px 22px}
-  .hdr .id h1{font-size:19px;font-weight:800;letter-spacing:-.2px}
-  .hdr .id p{font-size:13px;color:var(--mut);margin-top:3px}
-  .badge{font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--teal-d);background:rgba(21,194,178,.1);border:1px solid rgba(21,194,178,.35);padding:5px 10px;border-radius:999px;white-space:nowrap}
-  .logo{font-weight:800;font-size:15px;color:var(--teal-d)}
-  .logo span{color:var(--ink)}
-  /* steps */
-  .steps-h{padding:16px 22px 0}
   .kicker{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--teal-d)}
-  .steps-h h2{font-size:16px;font-weight:750;margin-top:2px}
+  h2{font-size:16px;font-weight:750;margin-top:2px}
+  .hdr{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 22px;border-bottom:1px solid var(--line)}
+  .hdr h1{font-size:18px;font-weight:800}
+  .hdr p{font-size:12.5px;color:var(--mut);margin-top:2px}
+  .logo{font-weight:800;font-size:15px;color:var(--teal-d)}.logo span{color:var(--ink)}
+  .badge{font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--teal-d);background:rgba(21,194,178,.1);border:1px solid rgba(21,194,178,.35);padding:5px 10px;border-radius:999px}
   .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:14px 22px 20px}
   @media(max-width:760px){.steps{grid-template-columns:1fr}}
-  .step{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;transition:box-shadow .15s;position:relative}
-  .step:hover{box-shadow:0 3px 10px rgba(16,24,40,.08)}
+  .step{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px}
   .step .top{display:flex;align-items:center;gap:9px}
   .stepnum{font-size:10.5px;font-weight:800;letter-spacing:.7px;color:var(--mut);text-transform:uppercase}
   .step h3{font-size:14px;font-weight:700}
@@ -35,100 +30,172 @@
   .cta{display:inline-block;text-align:center;font-size:12.5px;font-weight:700;color:#fff;background:var(--teal-d);border:none;border-radius:8px;padding:9px 12px;text-decoration:none;cursor:pointer}
   .cta.ghost{background:#fff;color:var(--teal-d);border:1.5px solid var(--teal-d)}
   .done .cta{display:none}
-  /* listings */
-  .lst-h{display:flex;align-items:center;justify-content:space-between;padding:16px 22px 6px}
+  .sec-h{padding:16px 22px 6px;display:flex;align-items:center;justify-content:space-between;gap:10px}
   table{width:100%;border-collapse:collapse}
   th{font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--mut);text-align:left;padding:10px 22px;border-bottom:1px solid var(--line)}
-  td{padding:14px 22px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle}
-  tr:last-child td{border-bottom:none}
-  .addr{font-weight:700}
-  .agent{display:flex;align-items:center;gap:9px}
+  td{padding:13px 22px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  .addr{font-weight:700;color:var(--teal-d);cursor:pointer;text-decoration:underline;text-decoration-color:rgba(11,140,128,.35);text-underline-offset:3px}
+  .agent{display:inline-flex;align-items:center;gap:9px;cursor:pointer}
+  .agent .nm{font-weight:600;color:var(--teal-d);text-decoration:underline;text-decoration-color:rgba(11,140,128,.35);text-underline-offset:3px}
   .av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--teal-d));color:#fff;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
   .num{font-variant-numeric:tabular-nums;font-weight:700;color:var(--teal-d)}
   .pill{font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;white-space:nowrap}
   .pill.live{color:var(--ok);background:rgba(18,161,80,.09);border:1px solid rgba(18,161,80,.3)}
-  .pill.wait{color:#b45309;background:#fef8ec;border:1px solid #f2dfb3}
-  .empty{padding:26px 22px;color:var(--mut);font-size:13.5px}
+  .pill.wait{color:var(--warn);background:#fef8ec;border:1px solid #f2dfb3}
+  .hint{font-size:11.5px;color:var(--mut);padding:8px 22px 14px}
+  .mng{display:flex;gap:10px;flex-wrap:wrap;padding:6px 22px 18px}
+  .mng button{font-size:12.5px;font-weight:700;border-radius:8px;padding:9px 14px;cursor:pointer;border:1.5px solid var(--teal-d);background:#fff;color:var(--teal-d)}
+  .mng button.primary{background:var(--teal-d);color:#fff}
+  .calls .row-main{cursor:pointer}
+  .cdet{background:#fbfcfe;border-top:1px dashed var(--line)}
+  .cdet td{padding:12px 22px}
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:4px 14px;font-size:13px}
+  .kv b{color:var(--mut);font-weight:700;font-size:11px;letter-spacing:.6px;text-transform:uppercase;padding-top:2px}
+  .scorebig{font-weight:800;color:var(--teal-d)}
+  .empty{padding:24px 22px;color:var(--mut);font-size:13.5px}
   .foot{font-size:12px;color:var(--mut);padding:2px 4px 8px;text-align:right}
-  .skel{animation:pulse 1.2s infinite;background:#eef1f5;border-radius:8px;height:16px}
-  @keyframes pulse{50%{opacity:.45}}
+  /* modal */
+  .ovl{position:fixed;inset:0;background:rgba(16,24,40,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .ovl.on{display:flex}
+  .modal{background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 50px rgba(16,24,40,.25)}
+  .modal .m-h{padding:16px 20px;border-bottom:1px solid var(--line)}
+  .modal .m-h h3{font-size:16px;font-weight:800}
+  .modal .m-h p{font-size:12.5px;color:var(--mut);margin-top:3px}
+  .modal .m-b{padding:16px 20px;display:grid;gap:12px}
+  .fld label{display:block;font-size:11.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);margin-bottom:5px}
+  .fld input,.fld textarea{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit;font-size:14px}
+  .fld input:focus,.fld textarea:focus{outline:none;border-color:var(--teal)}
+  .fld input[disabled]{background:#f3f5f8;color:var(--mut)}
+  .two{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .m-f{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end}
+  .msg{font-size:13px;font-weight:600;padding:0 20px 6px}
+  .msg.ok{color:var(--ok)}.msg.err{color:#c2410c}
 </style>
 </head>
 <body>
-<div class="wrap" id="app">
-  <div class="card hdr">
-    <div class="id"><h1 id="company"><span class="skel" style="display:inline-block;width:220px"></span></h1><p id="realtor"></p></div>
-    <div style="display:flex;align-items:center;gap:12px"><span class="badge" id="plan" hidden></span><div class="logo">One<span>Voice</span></div></div>
-  </div>
+<div class="wrap" id="app"></div>
 
-  <div class="card" id="stepsCard">
-    <div class="steps-h"><div class="kicker">Getting set up</div><h2>Three quick steps and your AI is answering buyers 24/7</h2></div>
-    <div class="steps">
-      <div class="step" id="s1">
-        <div class="top"><span class="chk" id="c1"></span><div><div class="stepnum">Step 1</div><h3>Get your free phone number</h3></div></div>
-        <p>Pick any local number — takes about 2 minutes and it's on us. If a "Register for A2P" box pops up, just close it (you don't need it).</p>
-        <a class="cta" id="a1" target="_top" href="#">Pick my number &rarr;</a>
-        <a class="cta ghost" target="_blank" href="https://onevoice-checkout.vercel.app/assign-number.html">See the picture guide</a>
-      </div>
-      <div class="step" id="s2">
-        <div class="top"><span class="chk" id="c2"></span><div><div class="stepnum">Step 2</div><h3>Connect your number to your AI</h3></div></div>
-        <p>One click — we wire your new number to your assistant automatically. From that moment your AI answers every call.</p>
-        <button class="cta" id="a2">Connect my number now</button>
-      </div>
-      <div class="step" id="s3">
-        <div class="top"><span class="chk" id="c3"></span><div><div class="stepnum">Step 3</div><h3>Take it everywhere</h3></div></div>
-        <p>Download the LeadConnector app and log in with this same email — every call, transcript and lead lands on your phone.</p>
-        <a class="cta" target="_blank" id="a3" href="https://apps.apple.com/app/lead-connector/id1564302502">Get the app</a>
-      </div>
-    </div>
-  </div>
+<div class="ovl" id="ovl"><div class="modal" id="modal"></div></div>
 
-  <div class="card">
-    <div class="lst-h"><div><div class="kicker">Your listings</div><h2 style="font-size:16px;font-weight:750;margin-top:2px">Every listing, its AI agent, and the number buyers call</h2></div></div>
-    <div id="tblWrap"><div class="empty">Loading your listings…</div></div>
-  </div>
-  <div class="foot">Questions? Call us at (855) 770-0200 — a specialist will walk you through anything.</div>
-</div>
 <script>
 (function(){
-  var q = new URLSearchParams(location.search), loc = q.get('loc') || '';
-  var API = 'https://onevoice-checkout.vercel.app';
-  var GHL = 'https://assistant.onesocial.ai/v2/location/' + loc;
-  document.getElementById('a1').href = GHL + '/settings/phone_number';
-  function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  var q = new URLSearchParams(location.search), loc = q.get('loc')||'', view = q.get('view')||'main';
+  var API='https://onevoice-checkout.vercel.app';
+  var GHL='https://assistant.onesocial.ai/v2/location/'+loc;
+  var D=null;
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function fmt(n){var d=String(n).replace(/[^0-9]/g,'').replace(/^1/,'');return d.length===10?'('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6):n;}
-  function mark(i,done){var s=document.getElementById('s'+i),c=document.getElementById('c'+i);if(done){s.classList.add('done');c.textContent='✓';}else{s.classList.remove('done');c.textContent='';}}
-  function render(d){
-    document.getElementById('company').textContent = d.company || 'Your account';
-    document.getElementById('realtor').textContent = d.realtor ? d.realtor + ' · OneVoice AI receptionist' : 'OneVoice AI receptionist';
-    if(d.planTier){var p=document.getElementById('plan');p.hidden=false;p.textContent='OneVoice ' + (d.planTier==='pro'?'Pro':'Basic');}
-    mark(1, d.steps && d.steps.numberBought);
-    mark(2, d.steps && d.steps.aiConnected);
-    mark(3, localStorage.getItem('ov_app_done')==='1');
-    var w = document.getElementById('tblWrap');
-    if(!d.listings || !d.listings.length){ w.innerHTML = '<div class="empty">Your AI assistant will appear here as soon as your account finishes setting up.</div>'; return; }
-    var rows = d.listings.map(function(l){
-      var ini = (l.agent||'A').trim().charAt(0).toUpperCase();
-      return '<tr><td class="addr">'+esc(l.address)+'</td>'+
-        '<td><span class="agent"><span class="av">'+ini+'</span>'+esc(l.agent)+'</span></td>'+
-        '<td class="num">'+(l.number?esc(fmt(l.number)):'—')+'</td>'+
-        '<td>'+(l.live?'<span class="pill live">● Answering 24/7</span>':'<span class="pill wait">Waiting for number</span>')+'</td></tr>';
+  function ftime(iso){if(!iso)return '';try{return new Date(iso).toLocaleString('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' ET';}catch(e){return '';}}
+  var app=document.getElementById('app'), ovl=document.getElementById('ovl'), modal=document.getElementById('modal');
+  ovl.addEventListener('click',function(e){if(e.target===ovl)ovl.classList.remove('on');});
+
+  function hdr(d){return '<div class="hdr"><div><h1>'+esc(d.company||'Your account')+'</h1><p>'+(d.realtor?esc(d.realtor)+' · ':'')+'OneVoice AI receptionist</p></div><div style="display:flex;align-items:center;gap:10px">'+(d.planTier?'<span class="badge">OneVoice '+(d.planTier==='pro'?'Pro':'Basic')+'</span>':'')+'<div class="logo">One<span>Voice</span></div></div></div>';}
+
+  function stepsHtml(d){
+    var s1=d.steps&&d.steps.numberBought, s2=d.steps&&d.steps.aiConnected, s3=localStorage.getItem('ov_app_done')==='1';
+    function box(n,done,title,body,btns){return '<div class="step'+(done?' done':'')+'"><div class="top"><span class="chk">'+(done?'✓':'')+'</span><div><div class="stepnum">Step '+n+'</div><h3>'+title+'</h3></div></div><p>'+body+'</p>'+btns+'</div>';}
+    return '<div class="sec-h" style="border-bottom:none"><div><div class="kicker">Getting set up</div><h2>Three quick steps and your AI is answering buyers 24/7</h2></div></div><div class="steps">'
+      +box(1,s1,'Get your free phone number','Pick any local number — takes about 2 minutes and it\'s on us. If a "Register for A2P" box pops up, just close it (you don\'t need it).','<a class="cta" target="_top" href="'+GHL+'/settings/phone_number">Pick my number →</a><a class="cta ghost" target="_blank" href="https://onevoice-checkout.vercel.app/assign-number.html">See the picture guide</a>')
+      +box(2,s2,'Connect your number to your AI','One click — we wire your new number to your assistant automatically. From that moment your AI answers every call.','<button class="cta" id="connectBtn">Connect my number now</button>')
+      +box(3,s3,'Take it everywhere','Download the LeadConnector app and log in with this same email — every call, transcript and lead lands on your phone.','<a class="cta" target="_blank" id="appBtn" href="https://apps.apple.com/app/lead-connector/id1564302502">Get the app</a>')
+      +'</div>';
+  }
+
+  function listingsHtml(d){
+    var rows=(d.listings||[]).map(function(l,i){
+      var ini=(l.agent||'A').trim().charAt(0).toUpperCase();
+      return '<tr><td class="addr" data-edit="'+i+'" title="Click to update this listing\'s details">'+esc(l.address)+'</td>'
+        +'<td><span class="agent" data-rename="'+i+'" title="Click to rename your assistant"><span class="av">'+ini+'</span><span class="nm">'+esc(l.agent)+'</span></span></td>'
+        +'<td class="num">'+(l.number?esc(fmt(l.number)):'—')+'</td>'
+        +'<td>'+(l.live?'<span class="pill live">● Answering 24/7</span>':'<span class="pill wait">Waiting for number</span>')+'</td></tr>';
     }).join('');
-    w.innerHTML = '<table><thead><tr><th>Listing</th><th>AI agent</th><th>Phone number</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table>';
+    var body = rows ? '<table><thead><tr><th>Listing</th><th>AI agent</th><th>Phone number</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table><div class="hint">Tip: click a <b>listing</b> to update its details (price, beds, showings…) — click your <b>agent\'s name</b> to rename them.</div>'
+      : '<div class="empty">Your AI assistant will appear here as soon as your account finishes setting up.</div>';
+    return '<div class="sec-h"><div><div class="kicker">Your listings</div><h2>Every listing, its AI agent, and the number buyers call</h2></div></div>'+body
+      +'<div class="sec-h" style="padding-top:4px"><div><div class="kicker">Manage</div></div></div><div class="mng"><button class="primary" data-mng="add">+ Add a listing</button><button data-mng="replace">Replace a listing</button><button data-mng="cancel">Cancel a listing</button></div>';
+  }
+
+  function callsHtml(d){
+    var calls=d.calls||[];
+    var prop=(d.listings&&d.listings[0]&&d.listings[0].address)||'your listing';
+    if(!calls.length) return '<div class="sec-h"><div><div class="kicker">Recent callers</div><h2>Every buyer your AI has talked to</h2></div></div><div class="empty">No calls yet — once your number is live, every caller shows up here with what they asked and how serious they are.</div>';
+    var rows=calls.map(function(c,i){
+      return '<tr class="row-main" data-call="'+i+'"><td style="font-weight:700">'+esc(c.name)+'</td><td>'+esc(prop)+'</td><td class="num">'+(c.phone?esc(fmt(c.phone)):'—')+'</td><td>'+esc(ftime(c.when))+'</td><td>'+(c.score?'<span class="scorebig">'+esc(c.score)+'</span>':'<span style="color:var(--mut)">—</span>')+'</td></tr>'
+        +'<tr class="cdet" id="cdet'+i+'" hidden><td colspan="5"><div class="kv">'
+        +'<b>Why they called</b><span>'+esc(c.reason||'—')+'</span>'
+        +'<b>Notes & questions</b><span>'+esc(c.notes||'—')+'</span>'
+        +(c.scoreReason?'<b>Why this score</b><span>'+esc(c.scoreReason)+'</span>':'')
+        +'<b>Full transcript</b><span><a target="_top" style="color:var(--teal-d);font-weight:700" href="'+GHL+'/contacts/detail/'+esc(c.id)+'">Open this caller in your inbox →</a></span>'
+        +'</div></td></tr>';
+    }).join('');
+    return '<div class="sec-h"><div><div class="kicker">Recent callers</div><h2>Every buyer your AI has talked to</h2></div></div><table class="calls"><thead><tr><th>Caller</th><th>Listing</th><th>Phone</th><th>When</th><th>Score</th></tr></thead><tbody>'+rows+'</tbody></table><div class="hint">Click any caller to see why they called, their key questions'+ (D&&D.planTier==='pro'?', their lead score':'') +' and the full transcript.</div>';
+  }
+
+  function openModal(html){modal.innerHTML=html;ovl.classList.add('on');}
+  function closeModal(){ovl.classList.remove('on');}
+
+  function editListing(i){
+    var l=D.listings[i];
+    openModal('<div class="m-h"><h3>Update '+esc(l.address)+'</h3><p>Change anything below — your AI uses the new facts on the very next call. Only fill what changed.</p></div>'
+      +'<div class="m-b"><div class="fld"><label>Listing address</label><input disabled value="'+esc(l.address)+'"><div style="font-size:11.5px;color:var(--mut);margin-top:4px">New property? Use <b>Replace a listing</b> in the Manage section instead.</div></div>'
+      +'<div class="fld"><label>Asking price</label><input id="f_price" placeholder="$329,000"></div>'
+      +'<div class="two"><div class="fld"><label>Beds</label><input id="f_beds" placeholder="3"></div><div class="fld"><label>Baths</label><input id="f_baths" placeholder="2"></div><div class="fld"><label>Sq ft</label><input id="f_sqft" placeholder="1,850"></div></div>'
+      +'<div class="fld"><label>Showing availability</label><input id="f_showing" placeholder="Sat–Sun 1–4 PM, or by appointment"></div>'
+      +'<div class="fld"><label>Anything else your AI should know</label><textarea id="f_details" rows="3" placeholder="New roof 2024, motivated seller, HOA $95/mo…"></textarea></div></div>'
+      +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button><button class="cta" id="m_save">Save changes</button></div>');
+    document.getElementById('m_save').addEventListener('click',function(){
+      var b=this;b.textContent='Saving…';b.disabled=true;
+      var body={action:'listing',loc:loc,agentId:l.id,price:val('f_price'),beds:val('f_beds'),baths:val('f_baths'),sqft:val('f_sqft'),showing:val('f_showing'),details:val('f_details')};
+      post('/api/update-listing',body,function(d){flash(d);b.textContent='Save changes';b.disabled=false;});
+    });
+  }
+  function renameAgent(i){
+    var l=D.listings[i];
+    openModal('<div class="m-h"><h3>Rename your assistant</h3><p>Your assistant introduces themselves by this name on every call. The listing stays attached automatically.</p></div>'
+      +'<div class="m-b"><div class="fld"><label>Assistant\'s name</label><input id="f_name" value="'+esc(l.agent)+'" maxlength="30"></div></div>'
+      +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button><button class="cta" id="m_save">Save name</button></div>');
+    document.getElementById('m_save').addEventListener('click',function(){
+      var b=this;b.textContent='Saving…';b.disabled=true;
+      post('/api/update-listing',{action:'rename',loc:loc,agentId:l.id,newName:val('f_name')},function(d){flash(d);b.textContent='Save name';b.disabled=false;if(d.ok)setTimeout(load,900);});
+    });
+  }
+  function manage(kind){
+    var t={add:['Add a listing','Tell us the new property address — we\'ll spin up its AI agent and add it to your plan ($149/mo Basic · $249/mo Pro per extra listing, prorated).'],
+           replace:['Replace a listing','Sold it? Tell us the old and new address — we swap the property, your phone number stays the same. ($49 swap on Pro.)'],
+           cancel:['Cancel a listing','Tell us which listing to retire. Its agent stops answering and your monthly price drops accordingly.']}[kind];
+    openModal('<div class="m-h"><h3>'+t[0]+'</h3><p>'+t[1]+'</p></div>'
+      +'<div class="m-b"><div class="fld"><label>Listing</label><input id="f_listing" placeholder="'+(kind==='replace'?'Old: 123 Maple Ave → New: 88 Oak St':'Property address')+'"></div>'
+      +'<div class="fld"><label>Anything we should know?</label><textarea id="f_note" rows="2" placeholder="Optional"></textarea></div></div>'
+      +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button><button class="cta" id="m_save">Send request</button></div>');
+    document.getElementById('m_save').addEventListener('click',function(){
+      var b=this;b.textContent='Sending…';b.disabled=true;
+      post('/api/manage-request',{loc:loc,action:kind,listing:val('f_listing'),note:val('f_note')},function(d){flash(d);b.textContent='Send request';b.disabled=!!d.ok;});
+    });
+  }
+  function val(id){var e=document.getElementById(id);return e?e.value:'';}
+  function flash(d){var m=document.getElementById('m_msg');if(m){m.textContent=d.message||(d.ok?'Done!':'Something went wrong.');m.className='msg '+(d.ok?'ok':'err');}}
+  function post(path,body,cb){fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(cb).catch(function(){cb({ok:false,message:'Network hiccup — try again.'});});}
+
+  function render(d){
+    D=d;
+    if(view==='setup'){ app.innerHTML='<div class="card">'+hdr(d)+stepsHtml(d)+'</div>'; }
+    else { app.innerHTML='<div class="card">'+listingsHtml(d)+'</div><div class="card">'+callsHtml(d)+'</div><div class="foot">Questions? Call us at (855) 770-0200 — a specialist will walk you through anything.</div>'; }
+    var cb=document.getElementById('connectBtn');
+    if(cb)cb.addEventListener('click',function(){var b=this;b.textContent='Connecting…';b.disabled=true;
+      fetch(API+'/api/connect-number?loc='+encodeURIComponent(loc)).then(function(r){return r.json();}).then(function(x){b.textContent=x.assigned&&x.assigned.length?'Connected!':(x.already&&x.already.length?'Already connected!':'Buy your number first (Step 1)');b.disabled=false;load();});});
+    var ab=document.getElementById('appBtn');
+    if(ab)ab.addEventListener('click',function(){localStorage.setItem('ov_app_done','1');load();});
+    app.querySelectorAll('[data-edit]').forEach(function(e){e.addEventListener('click',function(){editListing(+this.dataset.edit);});});
+    app.querySelectorAll('[data-rename]').forEach(function(e){e.addEventListener('click',function(){renameAgent(+this.dataset.rename);});});
+    app.querySelectorAll('[data-mng]').forEach(function(e){e.addEventListener('click',function(){manage(this.dataset.mng);});});
+    app.querySelectorAll('[data-call]').forEach(function(e){e.addEventListener('click',function(){var d=document.getElementById('cdet'+this.dataset.call);if(d)d.hidden=!d.hidden;});});
   }
   function load(){
-    fetch(API + '/api/panel-data?loc=' + encodeURIComponent(loc)).then(function(r){return r.json();}).then(render)
-    .catch(function(){document.getElementById('tblWrap').innerHTML='<div class="empty">Could not load right now — refresh in a moment.</div>';});
+    fetch(API+'/api/panel-data?loc='+encodeURIComponent(loc)).then(function(r){return r.json();}).then(render)
+    .catch(function(){app.innerHTML='<div class="card"><div class="empty">Could not load right now — refresh in a moment.</div></div>';});
   }
-  document.getElementById('a2').addEventListener('click', function(){
-    var b=this; b.textContent='Connecting…'; b.disabled=true;
-    fetch(API + '/api/connect-number?loc=' + encodeURIComponent(loc)).then(function(r){return r.json();}).then(function(d){
-      b.textContent = d.assigned && d.assigned.length ? 'Connected!' : (d.already && d.already.length ? 'Already connected!' : 'Buy your number first (Step 1)');
-      b.disabled=false; load();
-    }).catch(function(){b.textContent='Try again'; b.disabled=false;});
-  });
-  document.getElementById('a3').addEventListener('click', function(){ localStorage.setItem('ov_app_done','1'); mark(3,true); });
-  if(loc) load(); else document.getElementById('tblWrap').innerHTML='<div class="empty">Missing account id.</div>';
+  if(loc)load(); else app.innerHTML='<div class="card"><div class="empty">Missing account id.</div></div>';
 })();
 </script>
 </body>
