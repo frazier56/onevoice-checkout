@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OneVoice — Your Listings</title>
+<style>
+  :root{--teal:#15C2B2;--teal-d:#0B8C80;--ink:#1A2233;--mut:#5a6677;--line:#e8ebf1;--bg:#f7f9fb;--ok:#12a150;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Inter,-apple-system,'Segoe UI',Roboto,sans-serif;background:transparent;color:var(--ink);padding:4px 2px}
+  .wrap{max-width:1180px;margin:0 auto;display:grid;gap:14px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  /* header */
+  .hdr{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px 22px}
+  .hdr .id h1{font-size:19px;font-weight:800;letter-spacing:-.2px}
+  .hdr .id p{font-size:13px;color:var(--mut);margin-top:3px}
+  .badge{font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--teal-d);background:rgba(21,194,178,.1);border:1px solid rgba(21,194,178,.35);padding:5px 10px;border-radius:999px;white-space:nowrap}
+  .logo{font-weight:800;font-size:15px;color:var(--teal-d)}
+  .logo span{color:var(--ink)}
+  /* steps */
+  .steps-h{padding:16px 22px 0}
+  .kicker{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--teal-d)}
+  .steps-h h2{font-size:16px;font-weight:750;margin-top:2px}
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:14px 22px 20px}
+  @media(max-width:760px){.steps{grid-template-columns:1fr}}
+  .step{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;transition:box-shadow .15s;position:relative}
+  .step:hover{box-shadow:0 3px 10px rgba(16,24,40,.08)}
+  .step .top{display:flex;align-items:center;gap:9px}
+  .stepnum{font-size:10.5px;font-weight:800;letter-spacing:.7px;color:var(--mut);text-transform:uppercase}
+  .step h3{font-size:14px;font-weight:700}
+  .step p{font-size:12.5px;color:var(--mut);line-height:1.5;flex:1}
+  .chk{width:22px;height:22px;border-radius:50%;border:2px solid #cdd4de;display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:13px;color:#fff}
+  .done .chk{background:var(--ok);border-color:var(--ok)}
+  .done{border-color:rgba(18,161,80,.35);background:#f6fdf9}
+  .done h3{text-decoration:line-through;color:var(--mut)}
+  .cta{display:inline-block;text-align:center;font-size:12.5px;font-weight:700;color:#fff;background:var(--teal-d);border:none;border-radius:8px;padding:9px 12px;text-decoration:none;cursor:pointer}
+  .cta.ghost{background:#fff;color:var(--teal-d);border:1.5px solid var(--teal-d)}
+  .done .cta{display:none}
+  /* listings */
+  .lst-h{display:flex;align-items:center;justify-content:space-between;padding:16px 22px 6px}
+  table{width:100%;border-collapse:collapse}
+  th{font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--mut);text-align:left;padding:10px 22px;border-bottom:1px solid var(--line)}
+  td{padding:14px 22px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  .addr{font-weight:700}
+  .agent{display:flex;align-items:center;gap:9px}
+  .av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--teal-d));color:#fff;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .num{font-variant-numeric:tabular-nums;font-weight:700;color:var(--teal-d)}
+  .pill{font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;white-space:nowrap}
+  .pill.live{color:var(--ok);background:rgba(18,161,80,.09);border:1px solid rgba(18,161,80,.3)}
+  .pill.wait{color:#b45309;background:#fef8ec;border:1px solid #f2dfb3}
+  .empty{padding:26px 22px;color:var(--mut);font-size:13.5px}
+  .foot{font-size:12px;color:var(--mut);padding:2px 4px 8px;text-align:right}
+  .skel{animation:pulse 1.2s infinite;background:#eef1f5;border-radius:8px;height:16px}
+  @keyframes pulse{50%{opacity:.45}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="card hdr">
+    <div class="id"><h1 id="company"><span class="skel" style="display:inline-block;width:220px"></span></h1><p id="realtor"></p></div>
+    <div style="display:flex;align-items:center;gap:12px"><span class="badge" id="plan" hidden></span><div class="logo">One<span>Voice</span></div></div>
+  </div>
+
+  <div class="card" id="stepsCard">
+    <div class="steps-h"><div class="kicker">Getting set up</div><h2>Three quick steps and your AI is answering buyers 24/7</h2></div>
+    <div class="steps">
+      <div class="step" id="s1">
+        <div class="top"><span class="chk" id="c1"></span><div><div class="stepnum">Step 1</div><h3>Get your free phone number</h3></div></div>
+        <p>Pick any local number — takes about 2 minutes and it's on us. If a "Register for A2P" box pops up, just close it (you don't need it).</p>
+        <a class="cta" id="a1" target="_top" href="#">Pick my number &rarr;</a>
+        <a class="cta ghost" target="_blank" href="https://onevoice-checkout.vercel.app/assign-number.html">See the picture guide</a>
+      </div>
+      <div class="step" id="s2">
+        <div class="top"><span class="chk" id="c2"></span><div><div class="stepnum">Step 2</div><h3>Connect your number to your AI</h3></div></div>
+        <p>One click — we wire your new number to your assistant automatically. From that moment your AI answers every call.</p>
+        <button class="cta" id="a2">Connect my number now</button>
+      </div>
+      <div class="step" id="s3">
+        <div class="top"><span class="chk" id="c3"></span><div><div class="stepnum">Step 3</div><h3>Take it everywhere</h3></div></div>
+        <p>Download the LeadConnector app and log in with this same email — every call, transcript and lead lands on your phone.</p>
+        <a class="cta" target="_blank" id="a3" href="https://apps.apple.com/app/lead-connector/id1564302502">Get the app</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="lst-h"><div><div class="kicker">Your listings</div><h2 style="font-size:16px;font-weight:750;margin-top:2px">Every listing, its AI agent, and the number buyers call</h2></div></div>
+    <div id="tblWrap"><div class="empty">Loading your listings…</div></div>
+  </div>
+  <div class="foot">Questions? Call us at (855) 770-0200 — a specialist will walk you through anything.</div>
+</div>
+<script>
+(function(){
+  var q = new URLSearchParams(location.search), loc = q.get('loc') || '';
+  var API = 'https://onevoice-checkout.vercel.app';
+  var GHL = 'https://assistant.onesocial.ai/v2/location/' + loc;
+  document.getElementById('a1').href = GHL + '/settings/phone_number';
+  function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function fmt(n){var d=String(n).replace(/[^0-9]/g,'').replace(/^1/,'');return d.length===10?'('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6):n;}
+  function mark(i,done){var s=document.getElementById('s'+i),c=document.getElementById('c'+i);if(done){s.classList.add('done');c.textContent='✓';}else{s.classList.remove('done');c.textContent='';}}
+  function render(d){
+    document.getElementById('company').textContent = d.company || 'Your account';
+    document.getElementById('realtor').textContent = d.realtor ? d.realtor + ' · OneVoice AI receptionist' : 'OneVoice AI receptionist';
+    if(d.planTier){var p=document.getElementById('plan');p.hidden=false;p.textContent='OneVoice ' + (d.planTier==='pro'?'Pro':'Basic');}
+    mark(1, d.steps && d.steps.numberBought);
+    mark(2, d.steps && d.steps.aiConnected);
+    mark(3, localStorage.getItem('ov_app_done')==='1');
+    var w = document.getElementById('tblWrap');
+    if(!d.listings || !d.listings.length){ w.innerHTML = '<div class="empty">Your AI assistant will appear here as soon as your account finishes setting up.</div>'; return; }
+    var rows = d.listings.map(function(l){
+      var ini = (l.agent||'A').trim().charAt(0).toUpperCase();
+      return '<tr><td class="addr">'+esc(l.address)+'</td>'+
+        '<td><span class="agent"><span class="av">'+ini+'</span>'+esc(l.agent)+'</span></td>'+
+        '<td class="num">'+(l.number?esc(fmt(l.number)):'—')+'</td>'+
+        '<td>'+(l.live?'<span class="pill live">● Answering 24/7</span>':'<span class="pill wait">Waiting for number</span>')+'</td></tr>';
+    }).join('');
+    w.innerHTML = '<table><thead><tr><th>Listing</th><th>AI agent</th><th>Phone number</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }
+  function load(){
+    fetch(API + '/api/panel-data?loc=' + encodeURIComponent(loc)).then(function(r){return r.json();}).then(render)
+    .catch(function(){document.getElementById('tblWrap').innerHTML='<div class="empty">Could not load right now — refresh in a moment.</div>';});
+  }
+  document.getElementById('a2').addEventListener('click', function(){
+    var b=this; b.textContent='Connecting…'; b.disabled=true;
+    fetch(API + '/api/connect-number?loc=' + encodeURIComponent(loc)).then(function(r){return r.json();}).then(function(d){
+      b.textContent = d.assigned && d.assigned.length ? 'Connected!' : (d.already && d.already.length ? 'Already connected!' : 'Buy your number first (Step 1)');
+      b.disabled=false; load();
+    }).catch(function(){b.textContent='Try again'; b.disabled=false;});
+  });
+  document.getElementById('a3').addEventListener('click', function(){ localStorage.setItem('ov_app_done','1'); mark(3,true); });
+  if(loc) load(); else document.getElementById('tblWrap').innerHTML='<div class="empty">Missing account id.</div>';
+})();
+</script>
+</body>
+</html>
