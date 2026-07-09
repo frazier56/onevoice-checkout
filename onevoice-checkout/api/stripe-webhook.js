@@ -241,11 +241,11 @@ async function stripSampleData(locationId) {
   const out = { ran: true, contactsDeleted: 0, oppsDeleted: 0, errors: [] };
   try {
     // contacts: search "example", delete matches with (example) in the name
-    const cs = await call('GET', `/contacts/?locationId=${locationId}&query=example&limit=50`);
+    const cs = await call('GET', `/contacts/?locationId=${locationId}&limit=100`);
     const list = (cs.data && cs.data.contacts) || [];
     for (const c of list) {
       const nm = `${c.firstName || ''} ${c.lastName || ''} ${c.contactName || ''}`.toLowerCase();
-      if (nm.includes('example')) {
+      if (nm.includes('(example)')) {
         const d = await call('DELETE', `/contacts/${c.id}`);
         if (d.ok) out.contactsDeleted++; else out.errors.push(`contact ${c.id}: ${d.status}`);
       }
