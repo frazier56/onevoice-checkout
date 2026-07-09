@@ -115,5 +115,57 @@ export default async function handler(req, res) {
     } catch (e) { out.stripsamples = { ran: false, reason: e.message }; }
   }
 
+
+  // CUSTOMER LOCKDOWN (#40): &lockdown=<locationId> - lock every non-OneSocial user
+  // on that location down to the customer permission set (dashboard, conversations,
+  // contacts, opportunities, calendars, phone + settings for number purchase; AI
+  // agents stay on for the Deploy step). Add &dry=1 to preview without writing.
+  if (req.query.lockdown) {
+    const locId = String(req.query.lockdown);
+    const CUSTOMER_PERMISSIONS = {
+      dashboardStatsEnabled: true, conversationsEnabled: true, contactsEnabled: true,
+      opportunitiesEnabled: true, appointmentsEnabled: true, phoneCallEnabled: true,
+      settingsEnabled: true, botService: true, leadValueEnabled: true, tagsEnabled: true,
+      assignedDataOnly: false, bulkRequestsEnabled: false,
+      campaignsEnabled: false, campaignsReadOnly: false,
+      workflowsEnabled: false, workflowsReadOnly: false, triggersEnabled: false,
+      funnelsEnabled: false, websitesEnabled: false, membershipEnabled: false,
+      reviewsEnabled: false, onlineListingsEnabled: false, marketingEnabled: false,
+      socialPlanner: false, bloggingEnabled: false, affiliateManagerEnabled: false,
+      contentAiEnabled: false, communitiesEnabled: false,
+      adwordsReportingEnabled: false, facebookAdsReportingEnabled: false,
+      attributionsReportingEnabled: false, agentReportingEnabled: false,
+      paymentsEnabled: false, invoiceEnabled: false, recordPaymentEnabled: false,
+      refundsEnabled: false, cancelSubscriptionEnabled: false, exportPaymentsEnabled: false,
+    };
+    const tok = process.env.GHL_AGENCY_TOKEN;
+    const hdr = { 'Authorization': `Bearer ${tok}`, 'Version': '2021-07-28', 'Content-Type': 'application/json', 'Accept': 'application/json' };
+    const resLd = { ran: true, users: [], updated: 0, skipped: 0, errors: [] };
+    try {
+      const companyId = process.env.GHL_COMPANY_ID || '';
+      const lr = await fetch(`https://services.leadconnectorhq.com/users/?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`, { headers: hdr });
+      let ld = {}; try { ld = await lr.json(); } catch { ld = {}; }
+      if (!lr.ok) { resLd.errors.push(`list-users ${lr.status}: ${JSON.stringify(ld).slice(0,200)}`); }
+      const users = ld.users || [];
+      for (const u of users) {
+        const email = String(u.email || '').toLowerCase();
+        const entry = { id: u.id, email, name: u.name || `${u.firstName||''} ${u.lastName||''}`.trim(), roleType: u.roles && u.roles.type, role: u.roles && u.roles.role };
+        if (email.endsWith('onesocial.ai')) { entry.action = 'skipped-founder'; resLd.skipped++; resLd.users.push(entry); continue; }
+        if (req.query.dry) { entry.action = 'dry-run'; resLd.users.push(entry); continue; }
+        const body = {
+          firstName: u.firstName || '', lastName: u.lastName || '', email: u.email,
+          type: 'account', role: (u.roles && u.roles.role) || 'admin', locationIds: (u.roles && u.roles.locationIds) || [locId],
+          permissions: CUSTOMER_PERMISSIONS, companyId,
+        };
+        const ur = await fetch(`https://services.leadconnectorhq.com/users/${u.id}`, { method: 'PUT', headers: hdr, body: JSON.stringify(body) });
+        let ud = {}; try { ud = await ur.json(); } catch { ud = {}; }
+        entry.action = ur.ok ? 'updated' : `error ${ur.status}: ${JSON.stringify(ud).slice(0,200)}`;
+        if (ur.ok) resLd.updated++; else resLd.errors.push(entry.action);
+        resLd.users.push(entry);
+      }
+    } catch (e) { resLd.errors.push(e.message); }
+    out.lockdown = resLd;
+  }
+
   return res.status(200).json(out);
 }

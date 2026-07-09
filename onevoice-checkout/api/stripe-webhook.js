@@ -115,6 +115,28 @@ function tempPassword() {
   return pick(U, 2) + pick(L, 4) + pick(N, 3) + pick(S, 1);
 }
 
+// #40 CUSTOMER LOCKDOWN: permission set applied to every customer login user.
+// Keeps: dashboard, conversations, contacts, opportunities, calendars, phone,
+// settings (needed to buy their number) and AI agents (Deploy step). Hides the
+// builder: marketing, automation, sites, memberships, reputation, reporting,
+// payments, social, blogs, communities, affiliate, content AI.
+const CUSTOMER_PERMISSIONS = {
+  dashboardStatsEnabled: true, conversationsEnabled: true, contactsEnabled: true,
+  opportunitiesEnabled: true, appointmentsEnabled: true, phoneCallEnabled: true,
+  settingsEnabled: true, botService: true, leadValueEnabled: true, tagsEnabled: true,
+  assignedDataOnly: false, bulkRequestsEnabled: false,
+  campaignsEnabled: false, campaignsReadOnly: false,
+  workflowsEnabled: false, workflowsReadOnly: false, triggersEnabled: false,
+  funnelsEnabled: false, websitesEnabled: false, membershipEnabled: false,
+  reviewsEnabled: false, onlineListingsEnabled: false, marketingEnabled: false,
+  socialPlanner: false, bloggingEnabled: false, affiliateManagerEnabled: false,
+  contentAiEnabled: false, communitiesEnabled: false,
+  adwordsReportingEnabled: false, facebookAdsReportingEnabled: false,
+  attributionsReportingEnabled: false, agentReportingEnabled: false,
+  paymentsEnabled: false, invoiceEnabled: false, recordPaymentEnabled: false,
+  refundsEnabled: false, cancelSubscriptionEnabled: false, exportPaymentsEnabled: false,
+};
+
 // 1) provision sub-account + login user
 async function provisionFirstListing(order) {
   const companyId = process.env.GHL_COMPANY_ID;
@@ -137,6 +159,7 @@ async function provisionFirstListing(order) {
   const usr = await ghlPost('/users/', {
     companyId, firstName, lastName, email: order.email, password: pw, phone: order.phone || '',
     type: 'account', role: 'admin', locationIds: [locationId],
+    permissions: CUSTOMER_PERMISSIONS,
   });
   const userExists = !usr.ok && /already exists/i.test(usr.data?.message || JSON.stringify(usr.data || {}));
   return {
