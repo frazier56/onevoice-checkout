@@ -143,10 +143,18 @@ export default async function handler(req, res) {
     const resLd = { ran: true, users: [], updated: 0, skipped: 0, errors: [] };
     try {
       const companyId = process.env.GHL_COMPANY_ID || '';
-      const lr = await fetch(`https://services.leadconnectorhq.com/users/?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`, { headers: hdr });
-      let ld = {}; try { ld = await lr.json(); } catch { ld = {}; }
-      if (!lr.ok) { resLd.errors.push(`list-users ${lr.status}: ${JSON.stringify(ld).slice(0,200)}`); }
-      const users = ld.users || [];
+      const listForms = [
+        `https://services.leadconnectorhq.com/users/?locationId=${encodeURIComponent(locId)}`,
+        `https://services.leadconnectorhq.com/users/search?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`,
+        `https://services.leadconnectorhq.com/users/?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`,
+      ];
+      let users = [];
+      for (const url of listForms) {
+        const lr = await fetch(url, { headers: hdr });
+        let ld = {}; try { ld = await lr.json(); } catch { ld = {}; }
+        if (lr.ok && (ld.users || Array.isArray(ld))) { users = ld.users || ld; resLd.listUrl = url.split('.com')[1]; break; }
+        resLd.errors.push(`list ${url.split('.com')[1].split('?')[0]} ${lr.status}: ${JSON.stringify(ld).slice(0,140)}`);
+      }
       for (const u of users) {
         const email = String(u.email || '').toLowerCase();
         const entry = { id: u.id, email, name: u.name || `${u.firstName||''} ${u.lastName||''}`.trim(), roleType: u.roles && u.roles.type, role: u.roles && u.roles.role };
