@@ -53,6 +53,7 @@ export default async function handler(req, res) {
       const name = a.agentName || a.name || 'Your AI assistant';
       const m = name.split(/\s+[—–-]\s+/); // "Ava — 123 Maple Ave"
       return {
+        id: a.id,
         agent: (m[0] || name).trim(),
         address: (m[1] || cv.listing_address || 'Your listing').trim(),
         number: a.inboundNumber || '',
@@ -64,6 +65,32 @@ export default async function handler(req, res) {
       numberBought: out.numbers.length > 0,
       aiConnected: out.listings.some(l => l.live),
     };
+
+    // Calls / leads feed: contacts the AI wrote after each call, newest first
+    out.calls = [];
+    if (lt.ok && lt.token) {
+      const cr = await call(lt.token, `/contacts/?locationId=${loc}&limit=20`);
+      const contacts = cr.data?.contacts || [];
+      const fld = (c, key) => {
+        const arr = c.customFields || c.customField || [];
+        for (const f of arr) { if ((f.key || f.fieldKey || '').toLowerCase().includes(key)) return f.value || f.field_value || ''; }
+        return '';
+      };
+      out.calls = contacts
+        .filter(c => !/onevoice|frazier|founder/i.test(`${c.email || ''}`))
+        .map(c => ({
+          id: c.id,
+          name: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.contactName || 'Caller',
+          phone: c.phone || '',
+          when: c.dateAdded || '',
+          reason: fld(c, 'call_reason'),
+          notes: fld(c, 'notes'),
+          score: fld(c, 'score_1') || fld(c, 'lead_score'),
+          scoreReason: fld(c, 'score_reason'),
+        }))
+        .sort((a, b) => new Date(b.when) - new Date(a.when))
+        .slice(0, 12);
+    }
     return res.status(200).json(out);
   } catch (e) {
     return res.status(200).json({ ok: false, message: e.message });
