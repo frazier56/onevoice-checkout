@@ -76,6 +76,7 @@ const ORDERS_LOCATION_ID = process.env.GHL_ORDERS_LOCATION_ID || 'VkZwS3nGWMX06N
 const ORDERS_PIPELINE_NAME = process.env.GHL_ORDERS_PIPELINE_NAME || 'New Orders';
 const LOGIN_URL = process.env.GHL_LOGIN_URL || 'https://app.gohighlevel.com/';
 const ASSIGN_GUIDE_URL = process.env.ASSIGN_GUIDE_URL || 'https://onevoice-checkout.vercel.app/assign-number.html';
+const CONNECT_NUMBER_URL = process.env.CONNECT_NUMBER_URL || 'https://onevoice-checkout.vercel.app/api/connect-number';
 // Provisioning (create sub-account + user) uses the AGENCY token.
 // Fulfillment (contact + email + pipeline card) hits LOCATION-level endpoints,
 // which an agency token can't access - so those use a LOCATION-level token.
@@ -440,7 +441,8 @@ function buildWelcomeEmailHtml(v) {
       <tr><td style="padding:14px 22px 4px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14.5px;line-height:1.55;color:#243244;">
           <tr><td style="padding:0 0 8px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Get your phone number &mdash; do this first.</b> As soon as you log in, set up your dedicated number. <b>This is the number buyers will call to ask about your listing</b>, so you'll put it on your signs, ads, and listings. It takes about 2 minutes and it's <b>on us</b> &mdash; we cover the cost: <a href="${ASSIGN_GUIDE_URL}" style="color:#0B8C80;font-weight:700;text-decoration:underline;">Set up my number &rarr;</a></td></tr>
-          <tr><td style="padding:0 0 8px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Then try it:</b> Open your assistant and place a test call online to hear how it greets your buyers.</td></tr>
+          <tr><td style="padding:0 0 8px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Connect it to your AI &mdash; one click.</b> Right after you pick your number, click this and we wire it to your assistant automatically: <a href="${CONNECT_NUMBER_URL}?loc=${esc(v.new_location_id || '')}" style="color:#0B8C80;font-weight:700;text-decoration:underline;">Connect my number to my AI &rarr;</a> From that moment your AI answers every call 24/7.</td></tr>
+          <tr><td style="padding:0 0 8px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Then try it:</b> Call your new number and hear your assistant greet you like a buyer.</td></tr>
           <tr><td style="padding:0;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#15C2B2;margin-right:9px;vertical-align:middle;"></span><b>Your dashboard</b> shows every call, transcript, and booked showing in one place.</td></tr>
         </table>
       </td></tr>
