@@ -157,7 +157,9 @@ export default async function handler(req, res) {
       }
       for (const u of users) {
         const email = String(u.email || '').toLowerCase();
-        const entry = { id: u.id, email, name: u.name || `${u.firstName||''} ${u.lastName||''}`.trim(), roleType: u.roles && u.roles.type, role: u.roles && u.roles.role };
+        const pm = u.permissions || {};
+        const entry = { id: u.id, email, name: u.name || `${u.firstName||''} ${u.lastName||''}`.trim(), roleType: u.roles && u.roles.type, role: u.roles && u.roles.role,
+          perms: { workflows: pm.workflowsEnabled, campaigns: pm.campaignsEnabled, funnels: pm.funnelsEnabled, websites: pm.websitesEnabled, memberships: pm.membershipEnabled, reviews: pm.reviewsEnabled, settings: pm.settingsEnabled, dashboard: pm.dashboardStatsEnabled, contacts: pm.contactsEnabled, conversations: pm.conversationsEnabled, opportunities: pm.opportunitiesEnabled, phone: pm.phoneCallEnabled, marketing: pm.marketingEnabled, social: pm.socialPlanner } };
         if (email.endsWith('onesocial.ai')) { entry.action = 'skipped-founder'; resLd.skipped++; resLd.users.push(entry); continue; }
         if (req.query.dry) { entry.action = 'dry-run'; resLd.users.push(entry); continue; }
         const body = {
