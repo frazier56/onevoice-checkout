@@ -77,7 +77,6 @@ export default async function handler(req, res) {
         return '';
       };
       out.calls = contacts
-        .filter(c => !/onevoice|frazier|founder/i.test(`${c.email || ''}`))
         .map(c => ({
           id: c.id,
           name: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.contactName || 'Caller',
