@@ -6,7 +6,7 @@
    /api/diag-token?k=ovtest97&loc=<locationId> -> a specific sub-account
 */
 import { getLocationToken, getCompanyToken } from '../lib/ghlTokens.js';
-import { kvGet } from '../lib/kv.js';
+import { kvGet, kvDel } from '../lib/kv.js';
 
 const DEMO = process.env.GHL_DEMO_LOCATION_ID || 'VkZwS3nGWMX06NRwLxJ8';
 
@@ -239,6 +239,27 @@ export default async function handler(req, res) {
   }
 
 
+  // CLEAR STALE OAUTH LOCATION TOKEN: &cleartok=<locationId>
+  // Deletes ov:ghltok:<loc> from KV so the next getLocationToken() re-MINTS
+  // from the (new-scope) company token. Use after a scope upgrade/reinstall.
+  if (req.query.cleartok) {
+    const locId = String(req.query.cleartok);
+    const resCt = { ran: true, key: 'ov:ghltok:' + locId };
+    try {
+      const before = await kvGet('ov:ghltok:' + locId);
+      resCt.existed = !!(before && before.accessToken);
+      resCt.oldScope = before && before.scope ? before.scope : '';
+      const d = await kvDel('ov:ghltok:' + locId);
+      resCt.deleted = !!(d && d.ok !== false);
+      // re-mint immediately and report the fresh scope
+      const t = await getLocationToken(locId);
+      resCt.remint = { ok: t.ok, reason: t.reason || '' };
+      const after = await kvGet('ov:ghltok:' + locId);
+      resCt.newScope = after && after.scope ? after.scope : '';
+    } catch (e) { resCt.error = e.message; }
+    out.cleartok = resCt;
+  }
+
   // DEDUPE VOICE AI AGENTS: &dedupeagents=<locationId> (&dry=1 to preview)
   // Deletes duplicate agents sharing the same agentName (keeps the FIRST);
   // cleanup for the webhook-retry residue (e.g. 10x "Ava - same").
@@ -261,9 +282,36 @@ export default async function handler(req, res) {
           const nm = (a.agentName || a.name || '').trim();
           if (!seen[nm]) { seen[nm] = a.id; resDp.kept.push({ id: a.id, name: nm }); continue; }
           if (req.query.dry) { resDp.deleted.push({ id: a.id, name: nm, action: 'dry-run' }); continue; }
-          const d = await call2('DELETE', `/voice-ai/agents/${a.id}?locationId=${locId}`);
-          resDp.deleted.push({ id: a.id, name: nm, action: d.ok ? 'deleted' : `failed ${d.status}` });
-          if (!d.ok) resDp.errors.push(`${a.id}: ${d.status}`);
+          // GHL gotcha (#92): DELETE returns 200 but can silently no-op.
+          // Try shapes in order, VERIFYING after each via GET agents list.
+          const callB = async (method, path, body) => {
+            const r = await fetch(`https://services.leadconnectorhq.com${path}`, {
+              method,
+              headers: { 'Authorization': `Bearer ${lt.token}`, 'Version': '2021-07-28', 'Accept': 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+              ...(body ? { body: JSON.stringify(body) } : {}),
+            });
+            let d = {}; try { d = await r.json(); } catch { d = {}; }
+            return { ok: r.ok, status: r.status, data: d };
+          };
+          const stillExists = async () => {
+            const chk = await call2('GET', `/voice-ai/agents?locationId=${locId}`);
+            const list = chk.data?.agents || (Array.isArray(chk.data) ? chk.data : []);
+            return list.some(x => x.id === a.id);
+          };
+          const shapes = [
+            ['del-query', () => callB('DELETE', `/voice-ai/agents/${a.id}?locationId=${locId}`)],
+            ['del-body', () => callB('DELETE', `/voice-ai/agents/${a.id}`, { locationId: locId })],
+            ['del-agent-route', () => callB('DELETE', `/voice-ai/agent/${a.id}?locationId=${locId}`)],
+            ['del-dashboard-route', () => callB('DELETE', `/voice-ai/dashboard/agents/${a.id}?locationId=${locId}`)],
+          ];
+          let done = false, tried = [];
+          for (const [label, fn] of shapes) {
+            const d = await fn();
+            tried.push(`${label}:${d.status}`);
+            if (d.ok && !(await stillExists())) { done = true; tried.push('verified-gone'); break; }
+          }
+          resDp.deleted.push({ id: a.id, name: nm, action: done ? 'deleted+verified' : `NO-OP (${tried.join(' ')})` });
+          if (!done) resDp.errors.push(`${a.id}: all shapes no-oped`);
         }
       }
     } catch (e) { resDp.errors.push(e.message); }
