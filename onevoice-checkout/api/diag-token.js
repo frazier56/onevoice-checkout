@@ -239,6 +239,30 @@ export default async function handler(req, res) {
   }
 
 
+  // DUMP RAW AGENT OBJECT(S): &agentraw=<locationId> — inspect published/status/
+  // inbound-routing fields to diagnose why a call goes to voicemail vs the agent.
+  if (req.query.agentraw) {
+    const locId = String(req.query.agentraw);
+    const resAr = { ran: true };
+    try {
+      const lt = await getLocationToken(locId);
+      if (!lt.ok || !lt.token) { resAr.error = 'no location token: ' + (lt.reason || ''); }
+      else {
+        const r = await fetch(`https://services.leadconnectorhq.com/voice-ai/agents?locationId=${locId}`, {
+          headers: { 'Authorization': `Bearer ${lt.token}`, 'Version': '2021-07-28', 'Accept': 'application/json' },
+        });
+        let d = {}; try { d = await r.json(); } catch { d = {}; }
+        const agents = d.agents || (Array.isArray(d) ? d : []);
+        // return the full first agent + the KEY-LIST of every agent so we can see
+        // which fields exist (published/status/inbound/callHandling/etc.)
+        resAr.count = agents.length;
+        resAr.firstAgentKeys = agents[0] ? Object.keys(agents[0]) : [];
+        resAr.firstAgent = agents[0] || null;
+      }
+    } catch (e) { resAr.error = e.message; }
+    out.agentraw = resAr;
+  }
+
   // LIST ALL SUB-ACCOUNTS: &listlocs=1 — id + name via agency token (UI-free)
   if (req.query.listlocs) {
     const resLl = { ran: true, locations: [], errors: [] };
