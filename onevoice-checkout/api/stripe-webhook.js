@@ -508,6 +508,80 @@ async function fulfillOrder(order) {
   return result;
 }
 
+/* ---- #63 self-serve add-a-listing fulfillment ------------------------------
+   Triggered by checkout sessions with metadata.action === 'add_listing'
+   (created by api/add-listing.js; full payload in KV ov:addl:<sessionId>).
+   1) swap the plan subscription to a count+1 price (NO trial, NO proration)
+   2) create the new AI agent on the customer's existing location
+   3) founder alert via the proven /api/manage-request email path            */
+async function fulfillAddListing(s) {
+  const { kvGet, kvSet } = await import('../lib/kv.js');
+  const key = `ov:addl:${s.id}`;
+  let p = null; try { p = await kvGet(key); } catch { p = null; }
+  const m = s.metadata || {};
+  const loc = (p && p.loc) || m.loc || '';
+  const out = { received: true, add_listing: true, loc, sessionId: s.id };
+  if (!loc) { out.error = 'no loc on session'; return out; }
+  if (p && p.done) { out.duplicate = true; return out; }
+
+  const tier = ((p && p.tier) || m.tier || 'basic').toLowerCase();
+  const term = ((p && p.term) || m.term || 'monthly').toLowerCase();
+  const newCount = parseInt((p && p.newCount) || m.new_count || '2') || 2;
+  const subId = (p && p.subId) || m.subscription || '';
+  const address = (p && p.address) || m.address || '';
+  const details = (p && p.details) || '';
+  const assistant = (p && p.assistant) || m.assistant || '';
+
+  // 1) bump the plan to the new count
+  out.billing = { ok: false };
+  try {
+    if (!subId) { out.billing.reason = 'no subscription id'; }
+    else {
+      const sub = await stripe.subscriptions.retrieve(subId);
+      const pt = PRICE[tier] || PRICE.basic;
+      const t = TERM[term] || TERM.monthly;
+      const monthly = pt.base + pt.add * (newCount - 1);
+      const recurring = Math.round(monthly * t.months * (1 - t.off));
+      const planName = `OneVoice ${tier === 'pro' ? 'Pro' : 'Basic'} - ${newCount} listings (${term})`;
+      const price = await stripe.prices.create({
+        currency: 'usd', unit_amount: recurring,
+        recurring: { interval: t.interval, interval_count: t.interval_count },
+        product_data: { name: planName },
+      });
+      const upd = await stripe.subscriptions.update(subId, {
+        items: [{ id: sub.items.data[0].id, price: price.id }],
+        proration_behavior: 'none',
+        metadata: { ...(sub.metadata || {}), listings: String(newCount) },
+      });
+      out.billing = { ok: true, priceId: price.id, recurring, planName, status: upd.status };
+    }
+  } catch (e) { out.billing = { ok: false, reason: e.message }; }
+
+  // 2) provision the new agent on THEIR location (index-1 slot = create-agent path)
+  try {
+    out.agent = await provisionAgentsForOrder({
+      locationId: loc,
+      order: { listings: [{}, { address, details, assistant }] },
+      updateFirstAgent: false,
+    });
+  } catch (e) { out.agent = { ok: false, reason: e.message }; }
+
+  // 3) founder alert (email path verified live)
+  try {
+    const note = `PAID + SELF-SERVE (auto-provisioned). Details: ${String(details).slice(0, 300)} | assistant: ${assistant || '—'}`
+      + ` | billing ${out.billing.ok ? `updated → ${newCount} listings (${out.billing.planName})` : `FAILED: ${out.billing.reason || '?'}`}`
+      + ` | agent ${out.agent && out.agent.ok ? 'created ✓' : `FAILED: ${(out.agent && out.agent.reason) || JSON.stringify((out.agent && out.agent.results) || []).slice(0, 160)}`}`;
+    const r = await fetch('https://onevoice-checkout.vercel.app/api/manage-request', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ loc, action: 'add', listing: address, note }),
+    });
+    out.founderAlert = { status: r.status };
+  } catch (e) { out.founderAlert = { error: e.message }; }
+
+  try { await kvSet(key, { ...(p || {}), loc, address, done: true, doneAt: new Date().toISOString(), billingOk: !!out.billing.ok, agentOk: !!(out.agent && out.agent.ok) }); } catch { /* best effort */ }
+  return out;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
   let event;
@@ -519,6 +593,13 @@ export default async function handler(req, res) {
   }
   if (event.type !== 'checkout.session.completed') return res.status(200).json({ received: true, ignored: event.type });
   const s = event.data.object;
+
+  // #63 SELF-SERVE ADD-A-LISTING — its own flow; must NEVER hit the new-order pipeline
+  if ((s.metadata || {}).action === 'add_listing') {
+    try { return res.status(200).json(await fulfillAddListing(s)); }
+    catch (e) { return res.status(200).json({ received: true, add_listing: true, error: e.message }); }
+  }
+
   try {
     const m = s.metadata || {};
     const customer = s.customer || '';
