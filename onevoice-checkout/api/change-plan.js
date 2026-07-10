@@ -133,6 +133,17 @@ export default async function handler(req, res) {
       proration_behavior: 'none',
       metadata: { ...(sub.metadata || {}), tier: newTier, term: newTerm },
     });
+    // SECURITY (ledger #100): these endpoints are loc-gated with no per-tenant auth.
+    // Until the per-tenant embed key ships, alert the founder on EVERY live plan
+    // change so any unexpected/abusive mutation is immediately visible + reversible.
+    try {
+      await fetch('https://onevoice-checkout.vercel.app/api/manage-request', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ loc, action: 'plan', listing: `PLAN CHANGE (self-serve, auto-applied)`,
+          note: `${plan.tier}/${plan.term} → ${newTier}/${newTerm} · new ${(recurring/100).toFixed(2)} per ${newTerm} · sub ${plan.subId}. If unexpected, this endpoint is loc-gated w/o per-tenant auth (#100) — investigate.` }),
+      });
+    } catch { /* alert is best-effort; billing change already applied */ }
+
     // NOTE: Pro-only feature gating in GHL (scoring/calendar) is applied by the
     // hideScoringForBasic path on new orders; a live tier switch should re-run it.
     // Flagged as a follow-up (ledger #99) — billing change itself is complete here.
