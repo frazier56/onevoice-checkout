@@ -60,8 +60,10 @@
   /* modal */
   .ovl{position:fixed;inset:0;background:rgba(16,24,40,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
   .ovl.on{display:flex}
-  .modal{background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 50px rgba(16,24,40,.25)}
-  .modal .m-h{padding:16px 20px;border-bottom:1px solid var(--line)}
+  .modal{background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(16,24,40,.25)}
+  .modal .m-h{padding:16px 20px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .modal .m-b{overflow:auto;flex:1 1 auto}
+  .modal .msg{flex:0 0 auto}
   .modal .m-h h3{font-size:16px;font-weight:800}
   .modal .m-h p{font-size:12.5px;color:var(--mut);margin-top:3px}
   .modal .m-b{padding:16px 20px;display:grid;gap:12px}
@@ -70,7 +72,7 @@
   .fld input:focus,.fld textarea:focus{outline:none;border-color:var(--teal)}
   .fld input[disabled]{background:#f3f5f8;color:var(--mut)}
   .two{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-  .m-f{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end}
+  .m-f{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;flex:0 0 auto;background:#fff}
   .msg{font-size:13px;font-weight:600;padding:0 20px 6px}
   .msg.ok{color:var(--ok)}.msg.err{color:#c2410c}
 </style>
