@@ -20,6 +20,7 @@ const ALLOWED_ORIGINS = [
   'https://onevoice-checkout.vercel.app',
   'https://oneworldlabs.ai',
   'https://www.oneworldlabs.ai',
+  'https://frazier56.github.io',
 ];
 const FREEBIES = {
   form:    'Smart contact form',
@@ -51,7 +52,7 @@ export default async function handler(req, res) {
     const freeKey = FREEBIES[freebie] ? freebie : 'form';
 
     const origin = ALLOWED_ORIGINS.includes(req.headers.origin || '') ? req.headers.origin : ALLOWED_ORIGINS[1];
-    const backTo = origin + '/oneapp.html';
+    const backTo = origin === 'https://frazier56.github.io' ? origin + '/onescore-preview/oneapp.html' : origin + '/oneapp.html';
 
     const summary =
       'OneApp Managed Hosting — $199/month, billed $597 every 3 months. Your rebuilt website is FREE; this covers hosting, ' +
