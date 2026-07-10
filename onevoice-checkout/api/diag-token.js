@@ -239,6 +239,22 @@ export default async function handler(req, res) {
   }
 
 
+  // LIST ALL SUB-ACCOUNTS: &listlocs=1 — id + name via agency token (UI-free)
+  if (req.query.listlocs) {
+    const resLl = { ran: true, locations: [], errors: [] };
+    try {
+      const tok = process.env.GHL_AGENCY_TOKEN;
+      const companyId = process.env.GHL_COMPANY_ID || '';
+      const r = await fetch(`https://services.leadconnectorhq.com/locations/search?companyId=${encodeURIComponent(companyId)}&limit=100`, {
+        headers: { 'Authorization': `Bearer ${tok}`, 'Version': '2021-07-28', 'Accept': 'application/json' },
+      });
+      let d = {}; try { d = await r.json(); } catch { d = {}; }
+      if (!r.ok) resLl.errors.push(`search ${r.status}: ${JSON.stringify(d).slice(0, 200)}`);
+      resLl.locations = (d.locations || []).map(l => ({ id: l.id || l._id, name: l.name, dateAdded: l.dateAdded || '' }));
+    } catch (e) { resLl.errors.push(e.message); }
+    out.listlocs = resLl;
+  }
+
   // CLEAR STALE OAUTH LOCATION TOKEN: &cleartok=<locationId>
   // Deletes ov:ghltok:<loc> from KV so the next getLocationToken() re-MINTS
   // from the (new-scope) company token. Use after a scope upgrade/reinstall.
