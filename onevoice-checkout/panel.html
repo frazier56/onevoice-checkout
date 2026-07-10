@@ -208,8 +208,41 @@
       });
     });
   }
+  function managePlan(){
+    openModal('<div class="m-h"><h3>Manage my plan</h3><p>Loading your current plan…</p></div><div class="m-b"><div class="empty">One moment…</div></div>');
+    fetch(API+'/api/change-plan?loc='+encodeURIComponent(loc)).then(function(r){return r.json();}).then(function(q){
+      if(!q.ok){openModal('<div class="m-h"><h3>Manage my plan</h3></div><div class="m-b"><div class="msg err">'+esc(q.message||'Could not load your plan.')+'</div></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button></div>');return;}
+      var cards=q.options.map(function(o,i){
+        var per='$'+(o.perMonthCents/100).toLocaleString()+'/mo';
+        var badge=o.kind==='upgrade'?'<span style="color:#0B8C80;font-weight:700">▲ Upgrade</span>':(o.kind==='downgrade'?'<span style="color:#b26a00;font-weight:700">▼ Downgrade</span>':'<span style="color:#5a6677;font-weight:700">Billing</span>');
+        return '<button class="planopt" data-oi="'+i+'" style="text-align:left;border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;background:#fff;cursor:pointer;display:block;width:100%">'
+          +'<div style="display:flex;justify-content:space-between;gap:10px"><span style="font-weight:700">'+esc(o.label)+'</span><span style="font-weight:800">'+per+'</span></div>'
+          +'<div style="font-size:12px;color:#5a6677;margin-top:3px">'+badge+' · '+esc(o.note)+'</div></button>';
+      }).join('');
+      openModal('<div class="m-h"><h3>Manage my plan</h3><p>You’re on <b>'+esc(q.current.label)+'</b> ($'+(q.current.perMonthCents/100).toLocaleString()+'/mo). Pick a change below — you’ll confirm before anything updates. Nothing is charged today; your next invoice reflects the new price.</p></div>'
+        +'<div class="m-b" style="gap:10px">'+cards+'</div>'
+        +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button></div>');
+      window._planOpts=q.options;
+      document.querySelectorAll('.planopt').forEach(function(e){e.addEventListener('click',function(){confirmPlan(window._planOpts[+this.dataset.oi],q.current);});});
+    }).catch(function(){flash({ok:false,message:'Network hiccup — try again.'});});
+  }
+  function confirmPlan(o,cur){
+    var per='$'+(o.perMonthCents/100).toLocaleString()+'/mo';
+    openModal('<div class="m-h"><h3>Confirm plan change</h3><p>Review your change. Nothing is charged today — your next invoice reflects the new price.</p></div>'
+      +'<div class="m-b">'
+      +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eef1f4"><span style="color:#5a6677">From</span><span style="font-weight:600">'+esc(cur.label)+' ($'+(cur.perMonthCents/100).toLocaleString()+'/mo)</span></div>'
+      +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eef1f4"><span style="color:#5a6677">To</span><span style="font-weight:700">'+esc(o.label)+' ('+per+')</span></div>'
+      +'<p style="color:#5a6677;font-size:12.5px;margin:8px 0 0">'+esc(o.note)+'</p></div>'
+      +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" id="m_back2">← Back</button><button class="cta" id="m_apply">Confirm change</button></div>');
+    document.getElementById('m_back2').addEventListener('click',function(){managePlan();});
+    document.getElementById('m_apply').addEventListener('click',function(){
+      var b=this;b.textContent='Applying…';b.disabled=true;
+      post('/api/change-plan',{loc:loc,tier:o.tier,term:o.term},function(d){flash(d);b.textContent='Confirm change';b.disabled=!!d.ok;if(d.ok)setTimeout(load,1200);});
+    });
+  }
   function manage(kind, idx){
     if(kind==='add'){addListing();return;}
+    if(kind==='plan'){managePlan();return;}
     var cur = (idx!=null && D && D.listings && D.listings[idx]) ? D.listings[idx].address : '';
     var t={add:['Add a listing','Give us the new property’s address and details — we’ll spin up its AI agent and add it to your plan ($149/mo Basic · $249/mo Pro per extra listing; one-time $49 setup; no extra trial).'],
            replace:['Replace this listing','Sold it? Your phone number and agent stay — we swap in the new property. ($49 swap on Pro.)'],
