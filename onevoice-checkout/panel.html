@@ -166,7 +166,48 @@
       post('/api/update-listing',{action:'rename',loc:loc,agentId:l.id,newName:val('f_name')},function(d){flash(d);b.textContent='Save name';b.disabled=false;if(d.ok)setTimeout(load,900);});
     });
   }
+  function money(c){return '$'+(c/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2});}
+  function addListing(){
+    openModal('<div class="m-h"><h3>Add a listing</h3><p>Tell us about the new property and name its AI assistant — you’ll see the exact price change before you pay. It goes live the moment payment clears.</p></div>'
+      +'<div class="m-b"><div class="fld"><label>New listing address</label><input id="f_addr" placeholder="88 Oak St, Pearl, MS"></div>'
+      +'<div class="fld"><label>Listing details</label><textarea id="f_det" rows="3" placeholder="Price, beds/baths, showing times, selling points — this is what your AI tells buyers"></textarea></div>'
+      +'<div class="fld"><label>AI assistant’s name</label><input id="f_asst" maxlength="30" placeholder="e.g. Ava"></div></div>'
+      +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button><button class="cta" id="m_next">Continue →</button></div>');
+    document.getElementById('m_next').addEventListener('click',function(){
+      var b=this, addr=val('f_addr'), det=val('f_det'), asst=val('f_asst');
+      if(!addr){flash({ok:false,message:'Please enter the new listing’s address.'});return;}
+      b.textContent='Checking your plan…';b.disabled=true;
+      fetch(API+'/api/add-listing?loc='+encodeURIComponent(loc)).then(function(r){return r.json();}).then(function(q){
+        if(!q.ok){flash(q);b.textContent='Continue →';b.disabled=false;return;}
+        addListingSummary(addr,det,asst,q);
+      }).catch(function(){flash({ok:false,message:'Network hiccup — try again.'});b.textContent='Continue →';b.disabled=false;});
+    });
+  }
+  function addListingSummary(addr,det,asst,q){
+    var planLabel=(q.tier==='pro'?'Pro':'Basic'), perMo=money(q.addMonthlyCents)+'/mo';
+    var row=function(k,v){return '<div style="display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-bottom:1px solid #eef1f4"><span style="color:#5a6677;flex:0 0 auto">'+k+'</span><span style="text-align:right;font-weight:600">'+v+'</span></div>';};
+    openModal('<div class="m-h"><h3>Confirm your new listing</h3><p>Here’s exactly what changes. Nothing is billed until you complete payment on the next screen.</p></div>'
+      +'<div class="m-b">'
+      +row('New listing',esc(addr))
+      +(det?row('Details',esc(det.length>90?det.slice(0,90)+'…':det)):'')
+      +row('AI assistant',esc(asst||'Ava'))
+      +row('Your plan',planLabel+' — '+q.count+' → '+q.newCount+' listings')
+      +row('Monthly change','+'+perMo)
+      +row('New plan total',money(q.newRecurringCents)+(q.term==='monthly'?'/mo':' per '+q.term))
+      +row('Due today',money(q.setupCents)+' one-time setup')
+      +'<p style="color:#5a6677;font-size:12.5px;margin:10px 0 0">No extra trial — the new listing is added to your current billing. After payment your AI agent is created automatically; then grab its phone number from Step 1 on your dashboard.</p>'
+      +'</div><div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" id="m_back">← Back</button><button class="cta" id="m_pay">Proceed to payment</button></div>');
+    document.getElementById('m_back').addEventListener('click',function(){addListing();});
+    document.getElementById('m_pay').addEventListener('click',function(){
+      var b=this;b.textContent='Opening secure checkout…';b.disabled=true;
+      post('/api/add-listing',{loc:loc,address:addr,details:det,assistant:asst},function(d){
+        if(d.ok&&d.url){try{window.top.location.href=d.url;}catch(e){window.open(d.url,'_blank');}b.textContent='Redirecting…';}
+        else{flash(d);b.textContent='Proceed to payment';b.disabled=false;}
+      });
+    });
+  }
   function manage(kind, idx){
+    if(kind==='add'){addListing();return;}
     var cur = (idx!=null && D && D.listings && D.listings[idx]) ? D.listings[idx].address : '';
     var t={add:['Add a listing','Give us the new property’s address and details — we’ll spin up its AI agent and add it to your plan ($149/mo Basic · $249/mo Pro per extra listing; one-time $49 setup; no extra trial).'],
            replace:['Replace this listing','Sold it? Your phone number and agent stay — we swap in the new property. ($49 swap on Pro.)'],
