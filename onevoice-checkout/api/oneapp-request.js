@@ -23,6 +23,7 @@ const ALLOWED_ORIGINS = [
   'https://onevoice-checkout.vercel.app',
   'https://oneworldlabs.ai',
   'https://www.oneworldlabs.ai',
+  'https://frazier56.github.io',
 ];
 
 function cors(req, res) {
