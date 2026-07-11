@@ -138,6 +138,31 @@ export default async function handler(req, res) {
     out.mkuser = r;
   }
 
+  // RESET PASSWORD for an existing login user - unblocks pending/stuck accounts whose
+  // user exists but was never activated. &resetpw=<loc>[&email=<email>]
+  if (req.query.resetpw) {
+    const locId = String(req.query.resetpw);
+    const tok = process.env.GHL_AGENCY_TOKEN, companyId = process.env.GHL_COMPANY_ID;
+    const email = String(req.query.email || '').toLowerCase();
+    const U='ABCDEFGHJKMNPQRSTUVWXYZ',Lc='abcdefghijkmnpqrstuvwxyz',N='23456789',S='!@#$%';
+    const pk=(s,c)=>Array.from({length:c},()=>s[Math.floor(Math.random()*s.length)]).join('');
+    const pw = pk(U,3)+pk(Lc,5)+pk(N,3)+pk(S,2);
+    const r = { locId, email };
+    try {
+      const su = await fetch(`https://services.leadconnectorhq.com/users/search?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`, { headers: { Authorization: `Bearer ${tok}`, Version: '2021-07-28', Accept: 'application/json' } });
+      const sd = await su.json().catch(() => ({}));
+      const users = sd.users || (Array.isArray(sd) ? sd : []);
+      r.userCount = users.length; r.emails = users.map(u => u.email);
+      const u = email ? users.find(x => String(x.email || '').toLowerCase() === email) : users[0];
+      if (!u || !u.id) { r.error = 'user not found for that email in this location'; out.resetpw = r; return res.status(200).json(out); }
+      r.userId = u.id; r.foundEmail = u.email;
+      const pr = await fetch(`https://services.leadconnectorhq.com/users/${u.id}`, { method: 'PUT', headers: { Authorization: `Bearer ${tok}`, Version: '2021-07-28', 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ password: pw }) });
+      const pd = await pr.json().catch(() => ({}));
+      r.status = pr.status; r.ok = pr.ok; r.tempPassword = pr.ok ? pw : ''; r.msg = pr.ok ? '' : (pd.message || JSON.stringify(pd).slice(0, 220));
+    } catch (e) { r.error = e.message; }
+    out.resetpw = r;
+  }
+
   // STRIP SAMPLES on an existing location: &stripsamples=<locationId> (#59 backfill)
   if (req.query.stripsamples) {
     const locId = String(req.query.stripsamples);
