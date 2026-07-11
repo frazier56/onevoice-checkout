@@ -212,6 +212,8 @@ async function linkLCPhone(locationId) {
 // cannot buy a number. So on every real order where the auto-link fails, email the
 // founder an ACTION-NEEDED with the exact one-click path. Best-effort, never blocks.
 const FOUNDER_ALERT_EMAIL = process.env.FOUNDER_ALERT_EMAIL || 'frazierlee@gmail.com';
+const FOUNDER_ALERT_PHONE = process.env.FOUNDER_ALERT_PHONE || '+17705521868';
+const FOUNDER_SMS_FROM = process.env.FOUNDER_SMS_FROM || '+12172909970';
 async function sendFounderLCPhoneAlert(order, locationId, lcPhone) {
   try {
     const up = await ghlPostLoc('/contacts/upsert', {
@@ -233,7 +235,16 @@ New sub-account: <b>${esc(locationId)}</b></p>
     const body = { type: 'Email', contactId, subject: `ACTION NEEDED: link LC Phone for ${order.company || order.email}`, html };
     if (process.env.GHL_EMAIL_FROM) body.emailFrom = process.env.GHL_EMAIL_FROM;
     const r = await ghlPostLoc('/conversations/messages', body, { version: V_CONV });
-    return { ok: r.ok, status: r.status };
+    // Also TEXT the founder (Lee wants an SMS, not just email) so he can do the manual
+    // LC-Phone link fast from his phone. From the A2P-verified 217 line -> his cell.
+    let sms = { ok: false };
+    try {
+      sms = await ghlPostLoc('/conversations/messages', {
+        type: 'SMS', contactId, toNumber: FOUNDER_ALERT_PHONE, fromNumber: FOUNDER_SMS_FROM,
+        message: `OneVoice: new account "${order.company || order.name || order.email}" is set up and needs its phone linked. Do it: Agency Settings > Phone Integration > Sub Account Settings > that account's 3-dot menu > Link to LeadConnector. Then they can get a number. (loc ${locationId})`,
+      }, { version: V_CONV });
+    } catch (e) { sms = { ok: false, reason: e.message }; }
+    return { ok: r.ok, status: r.status, smsSent: sms.ok };
   } catch (e) { return { ok: false, reason: e.message }; }
 }
 
