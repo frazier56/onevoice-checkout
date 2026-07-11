@@ -112,6 +112,32 @@ export default async function handler(req, res) {
     out.lcbackend = { ok: !!via, via, attempts };
   }
 
+  // MK USER: (re)create a login user for an existing location - fixes accounts stuck from
+  // the pre-fix 10-char password 422 (no login user ever created). &mkuser=<loc>[&email=&fn=&ln=]
+  if (req.query.mkuser) {
+    const locId = String(req.query.mkuser);
+    const tok = process.env.GHL_AGENCY_TOKEN, companyId = process.env.GHL_COMPANY_ID;
+    const r = { locId };
+    let email = req.query.email, fn = req.query.fn, ln = req.query.ln;
+    try {
+      const lr = await fetch(`https://services.leadconnectorhq.com/locations/${locId}`, { headers: { Authorization: `Bearer ${tok}`, Version: '2021-07-28', Accept: 'application/json' } });
+      const ld = await lr.json().catch(() => ({})); const L = ld.location || ld;
+      email = email || L.email; r.locName = L.name; r.locEmail = L.email;
+      if (!fn) { const nm = String(L.name || '').split(' '); fn = nm[0] || 'Account'; ln = ln || nm.slice(1).join(' ') || 'Owner'; }
+    } catch (e) { r.locFetchErr = e.message; }
+    if (!email) { r.error = 'no email found - pass &email='; out.mkuser = r; return res.status(200).json(out); }
+    const U='ABCDEFGHJKMNPQRSTUVWXYZ',Lc='abcdefghijkmnpqrstuvwxyz',N='23456789',S='!@#$%';
+    const pk=(s,c)=>Array.from({length:c},()=>s[Math.floor(Math.random()*s.length)]).join('');
+    const pw = pk(U,3)+pk(Lc,5)+pk(N,3)+pk(S,2);
+    const body = { companyId, firstName: fn, lastName: ln || '', email, password: pw, type: 'account', role: 'admin', locationIds: [locId], permissions: { dashboardStatsEnabled:true, conversationsEnabled:true, contactsEnabled:true, opportunitiesEnabled:true, appointmentsEnabled:true, phoneCallEnabled:true, settingsEnabled:true, botService:true, leadValueEnabled:true, tagsEnabled:true, assignedDataOnly:false } };
+    try {
+      const ur = await fetch(`https://services.leadconnectorhq.com/users/`, { method: 'POST', headers: { Authorization: `Bearer ${tok}`, Version: '2021-07-28', 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
+      const ud = await ur.json().catch(() => ({}));
+      r.status = ur.status; r.ok = ur.ok; r.userId = ud.id || ''; r.email = email; r.tempPassword = ur.ok ? pw : ''; r.msg = ur.ok ? '' : (ud.message || JSON.stringify(ud).slice(0, 220));
+    } catch (e) { r.error = e.message; }
+    out.mkuser = r;
+  }
+
   // STRIP SAMPLES on an existing location: &stripsamples=<locationId> (#59 backfill)
   if (req.query.stripsamples) {
     const locId = String(req.query.stripsamples);
