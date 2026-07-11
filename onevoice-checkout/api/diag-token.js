@@ -88,6 +88,30 @@ export default async function handler(req, res) {
     out.lcphone = { ok: !!via, via, attempts };
   }
 
+  // 5b) LC PHONE LINK via BACKEND host: the agency UI "Link to LeadConnector" POSTs to
+  //     backend.leadconnectorhq.com (captured Jul 11) - services host 401s. Test our tokens here.
+  if (req.query.lcbackend) {
+    const locId = String(req.query.lcbackend);
+    const attempts = [];
+    const tryToken = async (label, token) => {
+      if (!token) { attempts.push({ label, skipped: 'no token' }); return false; }
+      try {
+        const r = await fetch(`https://backend.leadconnectorhq.com/conversations/providers/twilio/setup/subaccount?locationId=${encodeURIComponent(locId)}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Version': '2021-07-28', 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: '{}',
+        });
+        let data = {}; try { data = await r.json(); } catch { data = {}; }
+        attempts.push({ label, status: r.status, body: JSON.stringify(data).slice(0, 300) });
+        return r.ok;
+      } catch (e) { attempts.push({ label, error: e.message }); return false; }
+    };
+    let via = '';
+    if (await tryToken('agency-pit', process.env.GHL_AGENCY_TOKEN)) via = 'agency-pit';
+    if (!via) { try { const ct = await getCompanyToken(); if (ct && ct.token && await tryToken('oauth-company', ct.token)) via = 'oauth-company'; } catch (e) { attempts.push({ label: 'oauth-company', error: e.message }); } }
+    out.lcbackend = { ok: !!via, via, attempts };
+  }
+
   // STRIP SAMPLES on an existing location: &stripsamples=<locationId> (#59 backfill)
   if (req.query.stripsamples) {
     const locId = String(req.query.stripsamples);
