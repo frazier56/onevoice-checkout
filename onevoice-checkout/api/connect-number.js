@@ -44,22 +44,33 @@ export default async function handler(req, res) {
     const agents = ar.data?.agents || (Array.isArray(ar.data) ? ar.data : []);
     if (!agents.length) { out.message = 'No AI agent found on your account - call (855) 770-0200 and we will finish this for you.'; return res.status(200).json(out); }
 
-    const taken = new Set(agents.map(a => a.inboundNumber).filter(Boolean));
-    const freeNumbers = numbers.filter(n => !taken.has(n));
-    const bareAgents = agents.filter(a => !a.inboundNumber);
-    for (const a of agents) if (a.inboundNumber) out.already.push({ agent: a.agentName || a.name, number: a.inboundNumber });
+    // Plan: every agent must be PUBLISHED on a number. Keep an agent's existing
+    // inboundNumber; otherwise give it the next free number the location owns.
+    const boundNums = new Set(agents.map(a => a.inboundNumber).filter(Boolean));
+    const free = numbers.filter(n => !boundNums.has(n));
+    const plan = [];
+    for (const a of agents) {
+      const num = a.inboundNumber || (free.length ? free.shift() : '');
+      if (num) plan.push({ a, num });
+    }
+    if (!plan.length) { out.message = 'No phone number to connect yet - buy your number first (Settings > Phone System), then refresh and try again.'; return res.status(200).json(out); }
 
-    for (let i = 0; i < bareAgents.length && i < freeNumbers.length; i++) {
-      const a = bareAgents[i], num = freeNumbers[i];
-      let u = await call(lt.token, 'PUT', `/voice-ai/agents/${a.id}`, { locationId: loc, inboundNumber: num });
-      if (!u.ok && (u.status === 404 || u.status === 405)) u = await call(lt.token, 'PATCH', `/voice-ai/agents/${a.id}`, { locationId: loc, inboundNumber: num });
+    for (const { a, num } of plan) {
+      // Replicate the GHL Deploy-tab "Save": the ?publishAgent=true&mode=update query
+      // is what PUBLISHES the agent so it actually goes LIVE and answers calls.
+      // Setting inboundNumber WITHOUT publishing is cosmetic - the agent stays
+      // unpublished and inbound calls ring out to voicemail. (Root cause of #106/#111;
+      // verified Jul 11 2026 by capturing the exact call the GHL UI Save fires.)
+      const body = { locationId: loc, inboundNumber: num, inboundNumbers: [num], isAgentAsBackupDisabled: true };
+      const u = await call(lt.token, 'PUT', `/voice-ai/agents/${a.id}?publishAgent=true&mode=update`, body);
       if (u.ok) out.assigned.push({ agent: a.agentName || a.name, number: num });
+      else (out.errors ||= []).push({ agent: a.agentName || a.name, number: num, status: u.status, msg: String((u.data && u.data.message) || '').slice(0, 140) });
     }
 
-    out.ok = true;
+    out.ok = out.assigned.length > 0;
     out.message = out.assigned.length
-      ? `Done! ${out.assigned.map(x => `${x.agent} now answers ${x.number}`).join('; ')}. Call it and hear your AI pick up.`
-      : (out.already.length ? 'Your AI is already connected to your number - you are live!' : 'Nothing to connect yet.');
+      ? `Done! ${out.assigned.map(x => `${x.agent} is now live on ${x.number}`).join('; ')}. Call it and hear your AI pick up.`
+      : ((out.errors && out.errors.length) ? 'Could not finish connecting - call (855) 770-0200 and we will finish this for you.' : 'Nothing to connect yet.');
     return res.status(200).json(out);
   } catch (e) {
     out.message = 'Unexpected error: ' + e.message;
