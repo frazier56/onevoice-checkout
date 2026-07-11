@@ -113,7 +113,7 @@ const ghlPostLoc = (path, body, opts = {}) => ghl('POST', path, { ...opts, body,
 function tempPassword() {
   const U = 'ABCDEFGHJKMNPQRSTUVWXYZ', L = 'abcdefghijkmnpqrstuvwxyz', N = '23456789', S = '!@#$%';
   const pick = (set, c) => Array.from({ length: c }, () => set[Math.floor(Math.random() * set.length)]).join('');
-  return pick(U, 2) + pick(L, 4) + pick(N, 3) + pick(S, 1);
+  return pick(U, 3) + pick(L, 5) + pick(N, 3) + pick(S, 2);
 }
 
 // #40 CUSTOMER LOCKDOWN: permission set applied to every customer login user.
@@ -410,10 +410,10 @@ function buildWelcomeEmailHtml(v) {
   const trialEndStr = v.trial_end ? new Date(Number(v.trial_end) * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
   const credsInner = userExists
     ? `Username: ${username}<br><span style="color:#5a6677;">You already have a OneVoice login for this email &mdash; sign in with your existing password.</span>`
-    : `Username: ${username}<br><span style="color:#5a6677;">Use the button below to set your password and log in.</span>`;
+    : `Username: ${username}<br>Temporary password: <b style="color:#0B0F1A;letter-spacing:.3px;">${tempPw}</b><br><span style="color:#5a6677;">Log in with these &mdash; you'll be prompted to set your own password right away.</span>`;
   const credsNote = userExists
     ? `Forgot your password? Reset it from the login page.`
-    : `First time in? You'll create your password and confirm a quick verification code &mdash; no temporary password needed.`;
+    : `On first login you'll confirm a quick email verification code, then choose your own password. If the temporary password doesn't work, click &ldquo;Forgot password&rdquo; on the login page.`;
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;margin:0;padding:0;">
   <tr><td align="center" style="padding:0;">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
