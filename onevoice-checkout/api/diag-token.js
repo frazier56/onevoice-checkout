@@ -156,7 +156,7 @@ export default async function handler(req, res) {
       const u = email ? users.find(x => String(x.email || '').toLowerCase() === email) : users[0];
       if (!u || !u.id) { r.error = 'user not found for that email in this location'; out.resetpw = r; return res.status(200).json(out); }
       r.userId = u.id; r.foundEmail = u.email;
-      const pr = await fetch(`https://services.leadconnectorhq.com/users/${u.id}`, { method: 'PUT', headers: { Authorization: `Bearer ${tok}`, Version: '2021-07-28', 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ password: pw }) });
+      const pr = await fetch(`https://services.leadconnectorhq.com/users/${u.id}`, { method: 'PUT', headers: { Authorization: `Bearer ${tok}`, Version: '2021-07-28', 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ companyId, firstName: u.firstName, lastName: u.lastName, email: u.email, password: pw, type: 'account', role: 'admin', locationIds: [locId] }) });
       const pd = await pr.json().catch(() => ({}));
       r.status = pr.status; r.ok = pr.ok; r.tempPassword = pr.ok ? pw : ''; r.msg = pr.ok ? '' : (pd.message || JSON.stringify(pd).slice(0, 220));
     } catch (e) { r.error = e.message; }
