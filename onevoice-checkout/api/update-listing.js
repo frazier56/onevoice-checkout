@@ -54,10 +54,22 @@ async function putAgent(token, agentId, loc, body) {
   return u;
 }
 
+const DIRS = { n: 'North', s: 'South', e: 'East', w: 'West', ne: 'Northeast', nw: 'Northwest', se: 'Southeast', sw: 'Southwest' };
+const STYPES = { ave: 'Avenue', av: 'Avenue', st: 'Street', str: 'Street', rd: 'Road', blvd: 'Boulevard', dr: 'Drive', ln: 'Lane', ct: 'Court', cir: 'Circle', pl: 'Place', ter: 'Terrace', terr: 'Terrace', pkwy: 'Parkway', hwy: 'Highway', way: 'Way', sq: 'Square', trl: 'Trail', pt: 'Point', cres: 'Crescent', row: 'Row', run: 'Run', xing: 'Crossing', loop: 'Loop' };
+// "6092 N Sauganash Ave, Chicago, IL 60646" -> "Sauganash Avenue" (drop number + directional, expand type)
+function streetName(addr) {
+  const seg = String(addr || '').split(',')[0].trim();
+  let toks = seg.split(/\s+/).filter(Boolean);
+  if (toks.length && /^\d+[a-zA-Z]?$/.test(toks[0])) toks.shift();
+  if (toks.length > 1 && DIRS[toks[0].toLowerCase().replace(/\./g, '')]) toks.shift();
+  if (toks.length) { const last = toks[toks.length - 1].toLowerCase().replace(/\./g, ''); if (STYPES[last]) toks[toks.length - 1] = STYPES[last]; }
+  return toks.join(' ').trim();
+}
 function buildWelcome(aiName, addr, realtor) {
-  const who = realtor ? `${realtor}'s assistant` : 'the listing assistant';
-  const prop = addr ? `about ${addr}` : '';
-  const s = `Hi, thanks for calling ${prop}! This is ${aiName || 'your assistant'}, ${who}. I can answer questions or book you a showing - may I get your name?`.replace(/\s+/g, ' ').trim();
+  const who = realtor ? `${realtor}'s AI assistant` : 'the listing AI assistant';
+  const street = streetName(addr);
+  const prop = street ? `about the property on ${street}` : '';
+  const s = `Thanks for calling ${prop}! This is ${aiName || 'your assistant'}, ${who}. How can I help you today?`.replace(/\s+/g, ' ').trim();
   return s.slice(0, 188);
 }
 
@@ -143,9 +155,12 @@ export default async function handler(req, res) {
     if (eName) idRows.push(`- Your name is ${eName}. Introduce yourself by this name at the start of every call.`);
     if (eRealtor) idRows.push(`- You work for ${eRealtor}${eBiz ? ` of ${eBiz}` : ''}. Say who you represent early in the call.`);
     else if (eBiz) idRows.push(`- You represent ${eBiz}.`);
-    if (eAddr) idRows.push(`- The listing you handle: ${eAddr}. Reference it when you greet the caller.`);
+    if (eAddr) idRows.push(`- The listing you handle: ${eAddr}. Use it for facts, but speak only the street name unless asked for the full address.`);
     for (const r of detailRows) idRows.push(`- ${r}`);
-    idRows.push('- Open warmly, introduce yourself by name, say who you represent, reference the listing, and ask the caller for their name. If you do not know an answer, say you will log it for the agent to follow up. Always try to book a showing at a specific time.');
+    idRows.push('- SPEAKING ADDRESSES: In your greeting and normally, refer to the property by STREET NAME ONLY (e.g. "the property on Sauganash Avenue") - do NOT recite the house number, city, state, or ZIP unless the caller specifically asks for the full address.');
+    idRows.push('- When you DO say an address aloud, expand every abbreviation to full words and NEVER spell out letters: directionals N/S/E/W/NE/NW/SE/SW = North/South/East/West/Northeast/Northwest/Southeast/Southwest; street types Ave=Avenue, St=Street, Rd=Road, Blvd=Boulevard, Dr=Drive, Ln=Lane, Ct=Court, Cir=Circle, Pl=Place, Ter=Terrace, Pkwy=Parkway, Hwy=Highway, Sq=Square, Trl=Trail; and expand the state code to the full state name (IL=Illinois, CA=California, TX=Texas, etc.). Enunciate house numbers clearly, digit by digit.');
+    idRows.push('- Introduce yourself as "[your name], [the realtor]\'s AI assistant."');
+    idRows.push('- Open warmly, introduce yourself by name, say who you represent, reference the listing by its street name, and ask the caller for their name. If you do not know an answer, say you will log it for the agent to follow up. Always try to book a showing at a specific time.');
     prompt = prompt + ID_A + idRows.join('\n') + ID_B;
 
     const u = await putAgent(lt.token, agentId, loc, { agentPrompt: prompt });
