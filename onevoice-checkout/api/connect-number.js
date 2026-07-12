@@ -62,4 +62,20 @@ export default async function handler(req, res) {
       // is what PUBLISHES the agent so it actually goes LIVE and answers calls.
       // Setting inboundNumber WITHOUT publishing is cosmetic - the agent stays
       // unpublished and inbound calls ring out to voicemail. (Root cause of #106/#111;
-      // verified Jul 11 2026 by capturing th
+      // verified Jul 11 2026 by capturing the exact call the GHL UI Save fires.)
+      const body = { locationId: loc, inboundNumber: num, inboundNumbers: [num], isAgentAsBackupDisabled: true };
+      const u = await call(lt.token, 'PUT', `/voice-ai/agents/${a.id}?publishAgent=true&mode=update`, body);
+      if (u.ok) out.assigned.push({ agent: a.agentName || a.name, number: num });
+      else (out.errors ||= []).push({ agent: a.agentName || a.name, number: num, status: u.status, msg: String((u.data && u.data.message) || '').slice(0, 140) });
+    }
+
+    out.ok = out.assigned.length > 0;
+    out.message = out.assigned.length
+      ? `Done! ${out.assigned.map(x => `${x.agent} is now live on ${x.number}`).join('; ')}. Call it and hear your AI pick up.`
+      : ((out.errors && out.errors.length) ? 'Could not finish connecting - call (855) 770-0200 and we will finish this for you.' : 'Nothing to connect yet.');
+    return res.status(200).json(out);
+  } catch (e) {
+    out.message = 'Unexpected error: ' + e.message;
+    return res.status(200).json(out);
+  }
+}

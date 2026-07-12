@@ -360,4 +360,98 @@ export default async function handler(req, res) {
       if (!lt.ok || !lt.token) { resDp.errors.push('no location token: ' + (lt.reason || '')); }
       else {
         const call2 = async (method, path) => {
-          const r = await fetch(`https://services.leadconnectorhq.com${path}`, { method, headers: { 'Author
+          const r = await fetch(`https://services.leadconnectorhq.com${path}`, { method, headers: { 'Authorization': `Bearer ${lt.token}`, 'Version': '2021-07-28', 'Accept': 'application/json' } });
+          let d = {}; try { d = await r.json(); } catch { d = {}; }
+          return { ok: r.ok, status: r.status, data: d };
+        };
+        const ar = await call2('GET', `/voice-ai/agents?locationId=${locId}`);
+        const agents = ar.data?.agents || (Array.isArray(ar.data) ? ar.data : []);
+        const seen = {};
+        for (const a of agents) {
+          const nm = (a.agentName || a.name || '').trim();
+          if (!seen[nm]) { seen[nm] = a.id; resDp.kept.push({ id: a.id, name: nm }); continue; }
+          if (req.query.dry) { resDp.deleted.push({ id: a.id, name: nm, action: 'dry-run' }); continue; }
+          // GHL gotcha (#92): DELETE returns 200 but can silently no-op.
+          // Try shapes in order, VERIFYING after each via GET agents list.
+          const callB = async (method, path, body) => {
+            const r = await fetch(`https://services.leadconnectorhq.com${path}`, {
+              method,
+              headers: { 'Authorization': `Bearer ${lt.token}`, 'Version': '2021-07-28', 'Accept': 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+              ...(body ? { body: JSON.stringify(body) } : {}),
+            });
+            let d = {}; try { d = await r.json(); } catch { d = {}; }
+            return { ok: r.ok, status: r.status, data: d };
+          };
+          const stillExists = async () => {
+            const chk = await call2('GET', `/voice-ai/agents?locationId=${locId}`);
+            const list = chk.data?.agents || (Array.isArray(chk.data) ? chk.data : []);
+            return list.some(x => x.id === a.id);
+          };
+          const shapes = [
+            ['del-query', () => callB('DELETE', `/voice-ai/agents/${a.id}?locationId=${locId}`)],
+            ['del-body', () => callB('DELETE', `/voice-ai/agents/${a.id}`, { locationId: locId })],
+            ['del-agent-route', () => callB('DELETE', `/voice-ai/agent/${a.id}?locationId=${locId}`)],
+            ['del-dashboard-route', () => callB('DELETE', `/voice-ai/dashboard/agents/${a.id}?locationId=${locId}`)],
+          ];
+          let done = false, tried = [];
+          for (const [label, fn] of shapes) {
+            const d = await fn();
+            tried.push(`${label}:${d.status}`);
+            if (d.ok && !(await stillExists())) { done = true; tried.push('verified-gone'); break; }
+          }
+          resDp.deleted.push({ id: a.id, name: nm, action: done ? 'deleted+verified' : `NO-OP (${tried.join(' ')})` });
+          if (!done) resDp.errors.push(`${a.id}: all shapes no-oped`);
+        }
+      }
+    } catch (e) { resDp.errors.push(e.message); }
+    out.dedupeagents = resDp;
+  }
+
+  // RESET A USER'S PASSWORD (#108 Nigel): &resetpw=<locationId>&email=<email>[&pw=<newpw>]
+  // Finds the user by email on the location, PUTs /users/{id} with a new password.
+  // companyId comes from getCompanyToken() (env GHL_COMPANY_ID is empty at runtime).
+  if (req.query.resetpw) {
+    const locId = String(req.query.resetpw);
+    const email = String(req.query.email || '').toLowerCase();
+    const resRp = { ran: true, email, locId };
+    try {
+      const ct = await getCompanyToken();
+      const companyId = (ct && ct.companyId) || process.env.GHL_COMPANY_ID || '';
+      resRp.companyId = companyId ? 'found' : 'MISSING';
+      const tok = process.env.GHL_AGENCY_TOKEN;
+      const hdr = { 'Authorization': `Bearer ${tok}`, 'Version': '2021-07-28', 'Content-Type': 'application/json', 'Accept': 'application/json' };
+      const listForms = [
+        `https://services.leadconnectorhq.com/users/?locationId=${encodeURIComponent(locId)}`,
+        `https://services.leadconnectorhq.com/users/search?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`,
+        `https://services.leadconnectorhq.com/users/?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`,
+      ];
+      let users = [];
+      for (const url of listForms) {
+        const lr = await fetch(url, { headers: hdr });
+        let ld = {}; try { ld = await lr.json(); } catch { ld = {}; }
+        if (lr.ok && (ld.users || Array.isArray(ld))) { users = ld.users || ld; break; }
+        resRp.errors = resRp.errors || []; resRp.errors.push(`list ${lr.status}: ${JSON.stringify(ld).slice(0,140)}`);
+      }
+      resRp.usersOnLoc = users.map(x => x.email);
+      const u = email ? users.find(x => String(x.email||'').toLowerCase() === email) : users[0];
+      if (!u) { resRp.error = 'user not found on this location'; out.resetpw = resRp; return res.status(200).json(out); }
+      resRp.userId = u.id; resRp.foundEmail = u.email;
+      const newPw = String(req.query.pw || '') || ('OneVoice#' + Math.random().toString(36).slice(2, 8).replace(/[^a-z0-9]/g,'x') + 'A9');
+      const body = {
+        firstName: u.firstName || '', lastName: u.lastName || '', email: u.email,
+        password: newPw,
+        type: (u.roles && u.roles.type) || 'account',
+        role: (u.roles && u.roles.role) || 'admin',
+        locationIds: (u.roles && u.roles.locationIds) || [locId],
+        companyId,
+      };
+      const ur = await fetch(`https://services.leadconnectorhq.com/users/${u.id}`, { method: 'PUT', headers: hdr, body: JSON.stringify(body) });
+      let ud = {}; try { ud = await ur.json(); } catch { ud = {}; }
+      resRp.status = ur.status; resRp.ok = ur.ok;
+      if (ur.ok) resRp.newPassword = newPw; else resRp.body = JSON.stringify(ud).slice(0, 300);
+    } catch (e) { resRp.error = e.message; }
+    out.resetpw = resRp;
+  }
+
+  return res.status(200).json(out);
+}
