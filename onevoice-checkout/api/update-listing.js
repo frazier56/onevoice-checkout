@@ -53,7 +53,7 @@ export default async function handler(req, res) {
 
   if (action === 'listing') {
     const rows = [];
-    if (q.price)  rows.push(`- Asking price: ${clean(q.price, 40)}`);
+    if (q.price)  rows.push(`- Asking price: ${clean(q.price, 40)} (AUTHORITATIVE current price - if any other price appears in the details or anywhere else, ignore it and use THIS one)`);
     if (q.beds)   rows.push(`- Bedrooms: ${clean(q.beds, 10)}`);
     if (q.baths)  rows.push(`- Bathrooms: ${clean(q.baths, 10)}`);
     if (q.sqft)   rows.push(`- Square footage: ${clean(q.sqft, 20)}`);
