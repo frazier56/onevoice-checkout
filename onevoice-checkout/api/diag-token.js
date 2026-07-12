@@ -140,27 +140,47 @@ export default async function handler(req, res) {
 
   // RESET PASSWORD for an existing login user - unblocks pending/stuck accounts whose
   // user exists but was never activated. &resetpw=<loc>[&email=<email>]
-  if (req.query.resetpw) {
+    if (req.query.resetpw) {
     const locId = String(req.query.resetpw);
-    const tok = process.env.GHL_AGENCY_TOKEN, companyId = process.env.GHL_COMPANY_ID;
     const email = String(req.query.email || '').toLowerCase();
-    const U='ABCDEFGHJKMNPQRSTUVWXYZ',Lc='abcdefghijkmnpqrstuvwxyz',N='23456789',S='!@#$%';
-    const pk=(s,c)=>Array.from({length:c},()=>s[Math.floor(Math.random()*s.length)]).join('');
-    const pw = pk(U,3)+pk(Lc,5)+pk(N,3)+pk(S,2);
-    const r = { locId, email };
+    const resRp = { ran: true, email, locId };
     try {
-      const su = await fetch(`https://services.leadconnectorhq.com/users/search?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`, { headers: { Authorization: `Bearer ${tok}`, Version: '2021-07-28', Accept: 'application/json' } });
-      const sd = await su.json().catch(() => ({}));
-      const users = sd.users || (Array.isArray(sd) ? sd : []);
-      r.userCount = users.length; r.emails = users.map(u => u.email);
-      const u = email ? users.find(x => String(x.email || '').toLowerCase() === email) : users[0];
-      if (!u || !u.id) { r.error = 'user not found for that email in this location'; out.resetpw = r; return res.status(200).json(out); }
-      r.userId = u.id; r.foundEmail = u.email;
-      const pr = await fetch(`https://services.leadconnectorhq.com/users/${u.id}?companyId=${encodeURIComponent(companyId)}`, { method: 'PUT', headers: { Authorization: `Bearer ${tok}`, Version: '2021-07-28', 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ companyId, firstName: u.firstName, lastName: u.lastName, email: u.email, password: pw, type: 'account', role: 'admin', locationIds: [locId] }) });
-      const pd = await pr.json().catch(() => ({}));
-      r.status = pr.status; r.ok = pr.ok; r.tempPassword = pr.ok ? pw : ''; r.msg = pr.ok ? '' : (pd.message || JSON.stringify(pd).slice(0, 220));
-    } catch (e) { r.error = e.message; }
-    out.resetpw = r;
+      const ct = await getCompanyToken();
+      const companyId = (ct && ct.companyId) || process.env.GHL_COMPANY_ID || '';
+      resRp.companyId = companyId ? 'found' : 'MISSING';
+      const tok = process.env.GHL_AGENCY_TOKEN;
+      const hdr = { 'Authorization': `Bearer ${tok}`, 'Version': '2021-07-28', 'Content-Type': 'application/json', 'Accept': 'application/json' };
+      const listForms = [
+        `https://services.leadconnectorhq.com/users/?locationId=${encodeURIComponent(locId)}`,
+        `https://services.leadconnectorhq.com/users/search?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`,
+        `https://services.leadconnectorhq.com/users/?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`,
+      ];
+      let users = [];
+      for (const url of listForms) {
+        const lr = await fetch(url, { headers: hdr });
+        let ld = {}; try { ld = await lr.json(); } catch { ld = {}; }
+        if (lr.ok && (ld.users || Array.isArray(ld))) { users = ld.users || ld; break; }
+        resRp.errors = resRp.errors || []; resRp.errors.push(`list ${lr.status}: ${JSON.stringify(ld).slice(0,140)}`);
+      }
+      resRp.usersOnLoc = users.map(x => x.email);
+      const u = email ? users.find(x => String(x.email||'').toLowerCase() === email) : users[0];
+      if (!u) { resRp.error = 'user not found on this location'; out.resetpw = resRp; return res.status(200).json(out); }
+      resRp.userId = u.id; resRp.foundEmail = u.email;
+      const newPw = String(req.query.pw || '') || ('OneVoice#' + Math.random().toString(36).slice(2, 8).replace(/[^a-z0-9]/g,'x') + 'A9');
+      const body = {
+        firstName: u.firstName || '', lastName: u.lastName || '', email: u.email,
+        password: newPw,
+        type: (u.roles && u.roles.type) || 'account',
+        role: (u.roles && u.roles.role) || 'admin',
+        locationIds: (u.roles && u.roles.locationIds) || [locId],
+        companyId,
+      };
+      const ur = await fetch(`https://services.leadconnectorhq.com/users/${u.id}`, { method: 'PUT', headers: hdr, body: JSON.stringify(body) });
+      let ud = {}; try { ud = await ur.json(); } catch { ud = {}; }
+      resRp.status = ur.status; resRp.ok = ur.ok;
+      if (ur.ok) resRp.newPassword = newPw; else resRp.body = JSON.stringify(ud).slice(0, 300);
+    } catch (e) { resRp.error = e.message; }
+    out.resetpw = resRp;
   }
 
   // STRIP SAMPLES on an existing location: &stripsamples=<locationId> (#59 backfill)
