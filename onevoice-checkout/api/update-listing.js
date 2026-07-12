@@ -57,7 +57,8 @@ async function putAgent(token, agentId, loc, body) {
 function buildWelcome(aiName, addr, realtor) {
   const who = realtor ? `${realtor}'s assistant` : 'the listing assistant';
   const prop = addr ? `about ${addr}` : '';
-  return `Hi, thanks for calling ${prop}! This is ${aiName || 'your assistant'}, ${who}. I can answer questions about the property or get you booked for a showing - may I start with your name?`.replace(/\s+/g, ' ').trim();
+  const s = `Hi, thanks for calling ${prop}! This is ${aiName || 'your assistant'}, ${who}. I can answer questions or book you a showing - may I get your name?`.replace(/\s+/g, ' ').trim();
+  return s.slice(0, 188);
 }
 
 export default async function handler(req, res) {
@@ -128,6 +129,14 @@ export default async function handler(req, res) {
     if (url) cvResults.push(await upsertCV(cvTokens, loc, cvs, 'Listing URL', 'listing_url', url));
 
     let prompt = agent.agentPrompt || agent.prompt || '';
+    // GHL blocks saving when the prompt references {{custom_values.*}} that don't exist as
+    // fields. Those fields can't be created via our token, so resolve them to REAL TEXT.
+    const cvMap = { agent_display_name: eName, realtor_name: eRealtor, agent_business_name: eBiz, listing_address: eAddr, listing_details: detailsText, plan_tier: cvVal('plan_tier') };
+    prompt = prompt.replace(/\{\{\s*custom_values\.([a-zA-Z0-9_]+)\s*\}\}/g, (m, key) => {
+      const v = cvMap[key];
+      if (v !== undefined) return v || '';
+      return m; // leave genuinely-unknown tags untouched
+    });
     const ai = prompt.indexOf(ID_A);
     if (ai !== -1) { const bi = prompt.indexOf(ID_B, ai); prompt = bi !== -1 ? prompt.slice(0, ai) + prompt.slice(bi + ID_B.length) : prompt.slice(0, ai); }
     const idRows = [];
