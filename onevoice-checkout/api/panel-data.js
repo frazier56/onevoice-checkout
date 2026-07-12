@@ -44,6 +44,16 @@ export default async function handler(req, res) {
     const rawNums = numR.data.numbers || numR.data.phoneNumbers || (Array.isArray(numR.data) ? numR.data : []);
     out.numbers = rawNums.map(n => n.phoneNumber || n.number).filter(Boolean);
 
+    // GHL stores the number->agent binding on the NUMBER (inboundCallService), NOT
+    // reliably on the agent's inboundNumber field. Map agentId -> its phone number so
+    // a connected 2nd+ listing shows "live" even when agent.inboundNumber is blank.
+    const agentToNumber = {};
+    for (const n of rawNums) {
+      const svc = n.inboundCallService || n.inboundService;
+      const num = n.phoneNumber || n.number;
+      if (svc && svc.type === 'voice_ai' && svc.value && num) agentToNumber[svc.value] = num;
+    }
+
     let agents = [];
     if (lt.ok && lt.token) {
       const ar = await call(lt.token, `/voice-ai/agents?locationId=${loc}`);
@@ -52,12 +62,13 @@ export default async function handler(req, res) {
     out.listings = agents.map(a => {
       const name = a.agentName || a.name || 'Your AI assistant';
       const m = name.split(/\s+[—–-]\s+/); // "Ava — 123 Maple Ave"
+      const num = agentToNumber[a.id] || a.inboundNumber || '';
       return {
         id: a.id,
         agent: (m[0] || name).trim(),
         address: (m[1] || cv.listing_address || 'Your listing').trim(),
-        number: a.inboundNumber || '',
-        live: !!a.inboundNumber,
+        number: num,
+        live: !!num,
       };
     });
 
