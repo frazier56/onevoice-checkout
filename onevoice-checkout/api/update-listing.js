@@ -18,7 +18,7 @@ import { getLocationToken } from '../lib/ghlTokens.js';
 const GHL = 'https://services.leadconnectorhq.com';
 const V = '2021-07-28';
 const AGENCY = process.env.GHL_AGENCY_TOKEN;
-const ID_A = '\n\n### CURRENT LISTING & IDENTITY (authoritative - use these EXACT facts; they override anything above, including any {{custom_values}} that appear blank) ###\n';
+const ID_A = '\n\n### CURRENT LISTING & IDENTITY (authoritative - use these EXACT facts; they override anything above, including any merge fields that appear blank) ###\n';
 const ID_B = '\n### END CURRENT LISTING & IDENTITY ###';
 
 async function call(token, method, path, body) {
