@@ -49,6 +49,7 @@
   .mng button.primary{background:var(--teal-d);color:#fff}
   .rowbtn{font-size:11px;font-weight:700;border-radius:7px;padding:5px 9px;cursor:pointer;border:1.2px solid var(--teal-d);background:#fff;color:var(--teal-d)}
   .rowbtn.danger{border-color:#d9822b;color:#b45309}
+  .rowbtn.primaryish{background:var(--teal-d);color:#fff}
   .calls .row-main{cursor:pointer}
   .cdet{background:#fbfcfe;border-top:1px dashed var(--line)}
   .cdet td{padding:12px 22px}
@@ -116,12 +117,12 @@
         +'<td><span class="agent" data-rename="'+i+'" title="Click to rename your assistant"><span class="av">'+ini+'</span><span class="nm">'+esc(l.agent)+'</span></span></td>'
         +'<td class="num">'+(l.number?esc(fmt(l.number)):'—')+'</td>'
         +'<td>'+(l.live?'<span class="pill live">● Answering 24/7</span>':'<span class="pill wait">Waiting for number</span>')+'</td>'
-        +'<td style="white-space:nowrap"><button class="rowbtn" data-mng="replace" data-idx="'+i+'">Replace</button> <button class="rowbtn danger" data-mng="cancel" data-idx="'+i+'">Cancel</button></td></tr>';
+        +'<td style="white-space:nowrap">'+(l.live?'':'<button class="rowbtn primaryish" data-connect="'+esc(l.id)+'" title="Connect a number you\'ve bought to this listing">Connect a number</button> ')+'<button class="rowbtn" data-mng="replace" data-idx="'+i+'">Replace</button> <button class="rowbtn danger" data-mng="cancel" data-idx="'+i+'">Cancel</button></td></tr>';
     }).join('');
     var body = rows ? '<table><thead><tr><th>Listing address</th><th>AI agent</th><th>Phone number</th><th>Status</th><th></th></tr></thead><tbody>'+rows+'</tbody></table><div class="hint">Tip: click a <b>listing</b> to update its details (price, beds, showings…) — click your <b>agent\'s name</b> to rename them.</div>'
       : '<div class="empty">Your AI assistant will appear here as soon as your account finishes setting up.</div>';
     return '<div class="sec-h"><div><div class="kicker">Your listings</div><h2>Every listing, its AI agent, and the number buyers call</h2></div></div>'+body
-      +'<div class="sec-h" style="padding-top:4px"><div><div class="kicker">Manage</div></div></div><div class="mng"><button class="primary" data-mng="add">+ Add a listing</button><button data-mng="plan">Manage my plan</button></div>';
+      +'<div class="sec-h" style="padding-top:4px"><div><div class="kicker">Manage</div></div></div><div class="mng"><button class="primary" data-mng="add">+ Add a listing</button><button data-mng="addnum">+ Add a phone number</button><button data-mng="plan">Manage my plan</button></div>';
   }
 
   function callsHtml(d){
@@ -243,6 +244,7 @@
   function manage(kind, idx){
     if(kind==='add'){addListing();return;}
     if(kind==='plan'){managePlan();return;}
+    if(kind==='addnum'){var u=GHL+'/settings/phone_number';try{window.top.location.href=u;}catch(e){window.open(u,'_blank');}return;}
     var cur = (idx!=null && D && D.listings && D.listings[idx]) ? D.listings[idx].address : '';
     var t={add:['Add a listing','Give us the new property’s address and details — we’ll spin up its AI agent and add it to your plan ($149/mo Basic · $249/mo Pro per extra listing; one-time $49 setup; no extra trial).'],
            replace:['Replace this listing','Sold it? Your phone number and agent stay — we swap in the new property. ($49 swap on Pro.)'],
@@ -277,19 +279,8 @@
       fetch(API+'/api/connect-number?loc='+encodeURIComponent(loc)).then(function(r){return r.json();}).then(function(x){b.textContent=x.assigned&&x.assigned.length?'Connected!':(x.already&&x.already.length?'Already connected!':'Buy your number first (Step 1)');b.disabled=false;load();});});
     var ab=document.getElementById('appBtn');
     if(ab)ab.addEventListener('click',function(){localStorage.setItem('ov_app_done','1');load();});
+    app.querySelectorAll('[data-connect]').forEach(function(e){e.addEventListener('click',function(){var b=this;b.textContent='Connecting…';b.disabled=true;
+      fetch(API+'/api/connect-number?loc='+encodeURIComponent(loc)+'&agentId='+encodeURIComponent(this.dataset.connect)).then(function(r){return r.json();}).then(function(x){b.textContent=(x.assigned&&x.assigned.length)?'Connected!':((x.already&&x.already.length)?'Already connected!':'Buy a number first');setTimeout(load,900);}).catch(function(){b.textContent='Try again';b.disabled=false;});});});
     app.querySelectorAll('[data-edit]').forEach(function(e){e.addEventListener('click',function(){editListing(+this.dataset.edit);});});
     app.querySelectorAll('[data-rename]').forEach(function(e){e.addEventListener('click',function(){renameAgent(+this.dataset.rename);});});
-    app.querySelectorAll('[data-mng]').forEach(function(e){e.addEventListener('click',function(){manage(this.dataset.mng, this.dataset.idx!=null?+this.dataset.idx:null);});});
-    var hs=document.getElementById('hideSteps'); if(hs)hs.addEventListener('click',function(ev){ev.preventDefault();localStorage.setItem('ov_setup_hidden','1');render(D);});
-    var ss=document.getElementById('showSteps'); if(ss)ss.addEventListener('click',function(ev){ev.preventDefault();localStorage.removeItem('ov_setup_hidden');render(D);});
-    app.querySelectorAll('[data-call]').forEach(function(e){e.addEventListener('click',function(){var d=document.getElementById('cdet'+this.dataset.call);if(d)d.hidden=!d.hidden;});});
-  }
-  function load(){
-    fetch(API+'/api/panel-data?loc='+encodeURIComponent(loc)).then(function(r){return r.json();}).then(render)
-    .catch(function(){app.innerHTML='<div class="card"><div class="empty">Could not load right now — refresh in a moment.</div></div>';});
-  }
-  if(loc)load(); else app.innerHTML='<div class="card"><div class="empty">Missing account id.</div></div>';
-})();
-</script>
-</body>
-</html>
+    app.querySelectorAll('[data-mng]').forEach(function(e){e.addEventListener('click',function(){manage(this.dataset.mng, this.dataset.idx!=null?+this.datase
