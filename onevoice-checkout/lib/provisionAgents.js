@@ -137,6 +137,17 @@ export function injectListing(templatePrompt, listing = {}) {
   return p;
 }
 
+/** Pull a real street-address LINE out of a free-text / Zillow-paste details blob,
+ *  skipping price ($...) and bare-number lines. Prevents "$2,690,000\n2711 Brightwood
+ *  Ave..." collapsing to "$2" (the #112 bug) when the address field is left empty. */
+function shortLabelFromDetails(details) {
+  const lines = String(details || '').split('\n').map(s => s.trim()).filter(Boolean);
+  const streetish = lines.find(l => !/^\$/.test(l) && /\d/.test(l) && /[A-Za-z]{3,}/.test(l) && !/^\$?[\d,.\s]+$/.test(l));
+  if (streetish) return streetish;
+  const nonPrice = lines.find(l => !/^\$/.test(l) && /[A-Za-z]{3,}/.test(l));
+  return nonPrice || '';
+}
+
 /** Short agent name per listing, e.g. "Ava — 412 Maple St". GHL caps names at 40 chars. */
 function agentNameFor(template, listing, i) {
   let base = field(listing.assistant);
@@ -144,9 +155,10 @@ function agentNameFor(template, listing, i) {
     base = field(template?.agentName).split('—')[0].trim();
     if (!base || /template/i.test(base)) base = 'Ava';
   }
-  // listing has a free-text `details` blob (no structured address) — take the
-  // first line/segment as a short label; fall back to "Listing N".
-  const detail = field(listing.address) || field(listing.details).split(/[,.\n]/)[0].trim();
+  // listing has a free-text `details` blob (often a Zillow paste) — if there's no
+  // explicit address, extract a real street-address LINE from it. NEVER take the raw
+  // first comma-segment: "$2,690,000\n2711 Brightwood Ave..." -> "$2" (the #112 bug).
+  const detail = field(listing.address) || shortLabelFromDetails(field(listing.details));
   const short = detail || `Listing ${i + 1}`;
   let name = `${base} — ${short}`;
   if (name.length > 40) name = name.slice(0, 40).replace(/[\s—-]+$/, '').trim();
