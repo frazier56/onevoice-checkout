@@ -88,7 +88,8 @@ export default async function handler(req, res) {
     const parts = curName.split(/\s+[ââ-]\s+/);
     const suffix = parts.length > 1 ? curName.slice(parts[0].length) : '';
     const newName = first + suffix;
-    const u = await putAgent(lt.token, agentId, loc, { agentName: newName, welcomeMessage: buildWelcome(first, cvVal('listing_address'), cvVal('realtor_name')) });
+    const u = await putAgent(lt.token, agentId, loc, { agentName: newName });
+    await putAgent(lt.token, agentId, loc, { welcomeMessage: buildWelcome(first, cvVal('listing_address'), cvVal('realtor_name')) });
     await upsertCV(cvTokens, loc, cvs, 'Agent Display Name', 'agent_display_name', first);
     return res.status(200).json(u.ok ? { ok: true, message: `Done - your assistant is now ${first}.`, newName } : { ok: false, message: 'Could not rename right now.' });
   }
@@ -138,10 +139,11 @@ export default async function handler(req, res) {
     idRows.push('- Open warmly, introduce yourself by name, say who you represent, reference the listing, and ask the caller for their name. If you do not know an answer, say you will log it for the agent to follow up. Always try to book a showing at a specific time.');
     prompt = prompt + ID_A + idRows.join('\n') + ID_B;
 
-    const u = await putAgent(lt.token, agentId, loc, { agentPrompt: prompt, welcomeMessage: buildWelcome(eName, eAddr, eRealtor) });
+    const u = await putAgent(lt.token, agentId, loc, { agentPrompt: prompt });
+    const uw = await putAgent(lt.token, agentId, loc, { welcomeMessage: buildWelcome(eName, eAddr, eRealtor) });
     return res.status(200).json(u.ok
-      ? { ok: true, message: 'Listing updated - your AI has the new details right now.', cvResults }
-      : { ok: false, message: 'Saved your details, but could not refresh the assistant - call (855) 770-0200.', cvResults });
+      ? { ok: true, message: 'Listing updated - your AI has the new details right now.', promptStatus: u.status, welcomeStatus: uw.status, cvResults }
+      : { ok: false, message: 'Saved your details, but could not refresh the assistant - call (855) 770-0200.', promptStatus: u.status, welcomeStatus: uw.status, cvResults });
   }
 
   return res.status(400).json({ ok: false, message: 'unknown action' });
