@@ -32,19 +32,24 @@ async function call(token, method, path, body) {
 const clean = (s, n = 400) => String(s || '').replace(/[<>]/g, '').slice(0, n).trim();
 const cvNorm = s => String(s || '').toLowerCase().replace(/[^a-z_]/g, '');
 
-async function upsertCV(loc, list, name, keyFrag, value) {
+async function upsertCV(tokens, loc, list, name, keyFrag, value) {
   if (value === undefined || value === null || value === '') return { name, skipped: true };
   const existing = (list || []).find(c => cvNorm(c.name).includes(keyFrag) || String(c.fieldKey || c.key || '').toLowerCase().includes(keyFrag));
-  if (existing && existing.id) {
-    const u = await call(AGENCY, 'PUT', `/locations/${loc}/customValues/${existing.id}`, { name: existing.name || name, value });
-    return { name, action: 'update', ok: u.ok, status: u.status };
+  const path = existing && existing.id ? `/locations/${loc}/customValues/${existing.id}` : `/locations/${loc}/customValues`;
+  const method = existing && existing.id ? 'PUT' : 'POST';
+  const body = existing && existing.id ? { name: existing.name || name, value } : { name, value };
+  let last = { status: 0 };
+  for (const tk of tokens) {
+    if (!tk) continue;
+    const r = await call(tk, method, path, body);
+    last = r;
+    if (r.ok || r.status !== 401) break;
   }
-  const c = await call(AGENCY, 'POST', `/locations/${loc}/customValues`, { name, value });
-  return { name, action: 'create', ok: c.ok, status: c.status };
+  return { name, action: existing && existing.id ? 'update' : 'create', ok: last.ok, status: last.status };
 }
 
 async function putAgent(token, agentId, loc, body) {
-  let u = await call(token, 'PUT', `/voice-ai/agents/${agentId}?publishAgent=true&mode=update`, { locationId: loc, ...body });
+  let u = await call(token, 'PUT', `/voice-ai/agents/${agentId}`, { locationId: loc, ...body });
   if (!u.ok && (u.status === 404 || u.status === 405)) u = await call(token, 'PATCH', `/voice-ai/agents/${agentId}`, { locationId: loc, ...body });
   return u;
 }
@@ -71,7 +76,9 @@ export default async function handler(req, res) {
   const agent = ag.data?.agent || ag.data || {};
   if (!ag.ok || !(agent.agentName || agent.name)) return res.status(200).json({ ok: false, message: 'Assistant not found.' });
   const curName = agent.agentName || agent.name || '';
-  const cvList = await call(AGENCY, 'GET', `/locations/${loc}/customValues`);
+  const cvTokens = [lt.token, AGENCY].filter(Boolean);
+  let cvList = { data: {} };
+  for (const tk of cvTokens) { const r = await call(tk, 'GET', `/locations/${loc}/customValues`); if (r.ok) { cvList = r; break; } }
   const cvs = cvList.data?.customValues || (Array.isArray(cvList.data) ? cvList.data : []);
   const cvVal = (frag) => { const c = (cvs || []).find(x => cvNorm(x.name).includes(frag) || String(x.fieldKey || x.key || '').toLowerCase().includes(frag)); return c ? (c.value || '') : ''; };
 
@@ -82,7 +89,7 @@ export default async function handler(req, res) {
     const suffix = parts.length > 1 ? curName.slice(parts[0].length) : '';
     const newName = first + suffix;
     const u = await putAgent(lt.token, agentId, loc, { agentName: newName, welcomeMessage: buildWelcome(first, cvVal('listing_address'), cvVal('realtor_name')) });
-    await upsertCV(loc, cvs, 'Agent Display Name', 'agent_display_name', first);
+    await upsertCV(cvTokens, loc, cvs, 'Agent Display Name', 'agent_display_name', first);
     return res.status(200).json(u.ok ? { ok: true, message: `Done - your assistant is now ${first}.`, newName } : { ok: false, message: 'Could not rename right now.' });
   }
 
@@ -112,12 +119,12 @@ export default async function handler(req, res) {
     const detailsText = detailRows.join('\n') || cvVal('listing_details');
 
     const cvResults = [];
-    cvResults.push(await upsertCV(loc, cvs, 'Agent Display Name', 'agent_display_name', eName));
-    cvResults.push(await upsertCV(loc, cvs, 'Realtor Name', 'realtor_name', eRealtor));
-    cvResults.push(await upsertCV(loc, cvs, 'Agent Business Name', 'agent_business_name', eBiz));
-    cvResults.push(await upsertCV(loc, cvs, 'Listing Address', 'listing_address', eAddr));
-    cvResults.push(await upsertCV(loc, cvs, 'Listing Details', 'listing_details', detailsText));
-    if (url) cvResults.push(await upsertCV(loc, cvs, 'Listing URL', 'listing_url', url));
+    cvResults.push(await upsertCV(cvTokens, loc, cvs, 'Agent Display Name', 'agent_display_name', eName));
+    cvResults.push(await upsertCV(cvTokens, loc, cvs, 'Realtor Name', 'realtor_name', eRealtor));
+    cvResults.push(await upsertCV(cvTokens, loc, cvs, 'Agent Business Name', 'agent_business_name', eBiz));
+    cvResults.push(await upsertCV(cvTokens, loc, cvs, 'Listing Address', 'listing_address', eAddr));
+    cvResults.push(await upsertCV(cvTokens, loc, cvs, 'Listing Details', 'listing_details', detailsText));
+    if (url) cvResults.push(await upsertCV(cvTokens, loc, cvs, 'Listing URL', 'listing_url', url));
 
     let prompt = agent.agentPrompt || agent.prompt || '';
     const ai = prompt.indexOf(ID_A);
