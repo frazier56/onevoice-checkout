@@ -1,4 +1,4 @@
-/* Central SMS hub for OneVoice â sends ALL customer-facing texts from ONE
+/* Central SMS hub for OneVoice - sends ALL customer-facing texts from ONE
    A2P-verified number (858-544-1740) in the OneVoice Demo location, so no
    customer sub-account ever needs its own A2P/TFV registration.
 
@@ -59,6 +59,12 @@ async function sendSMS(phone, name, message) {
   return { ok: m.ok, status: m.status, contactId: cid, reason: m.ok ? '' : JSON.stringify(m.data).slice(0, 200) };
 }
 
+function fmtPhone(p) {
+  const s = normPhone(p);
+  const m = s.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  return m ? `+1 (${m[1]}) ${m[2]}-${m[3]}` : s;
+}
+
 const clip = (s, n = 200) => String(s || '').slice(0, n).trim();
 
 export default async function handler(req, res) {
@@ -73,13 +79,13 @@ export default async function handler(req, res) {
   try {
     if (action === 'notify-agent') {
       const street = clip(q.street, 80), caller = clip(q.callerName, 60) || 'A caller', score = clip(q.score, 10), reason = clip(q.scoreReason, 200);
-      const msg = `OneVoice: ${caller} just called about ${street || 'your listing'}.` + (score ? ` Lead score ${score}/10.` : '') + (reason ? ` ${reason}.` : '') + ` Call them back â full details are in your OneVoice dashboard.`;
+      const msg = `OneVoice: ${caller} just called about ${street || 'your listing'}.` + (score ? ` Lead score ${score}/10.` : '') + (reason ? ` ${reason}.` : '') + ` Call them back now. Full details are in your OneVoice dashboard.`;
       const r = await sendSMS(q.agentPhone, 'Agent', msg);
       return res.status(200).json({ action, ok: r.ok, from: FROM, r, msg });
     }
     if (action === 'text-buyer') {
       const street = clip(q.street, 80), agentName = clip(q.agentName, 60) || 'the agent', agentPhone = normPhone(q.agentPhone), showing = clip(q.showingTime, 60);
-      const msg = `Thanks for calling about ${street || 'the property'}! You can reach the agent, ${agentName}, at ${agentPhone || 'their office'}.` + (showing ? ` You're set for ${showing}.` : '');
+      const msg = `Thanks for calling about ${street || 'the property'}! You can reach the agent, ${agentName}, at ${agentPhone ? fmtPhone(agentPhone) : 'their office'}.` + (showing ? ` You're set for ${showing}.` : '');
       const r = await sendSMS(q.buyerPhone, clip(q.buyerName, 60), msg);
       return res.status(200).json({ action, ok: r.ok, from: FROM, r, msg });
     }
