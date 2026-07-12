@@ -283,4 +283,17 @@
       fetch(API+'/api/connect-number?loc='+encodeURIComponent(loc)+'&agentId='+encodeURIComponent(this.dataset.connect)).then(function(r){return r.json();}).then(function(x){b.textContent=(x.assigned&&x.assigned.length)?'Connected!':((x.already&&x.already.length)?'Already connected!':'Buy a number first');setTimeout(load,900);}).catch(function(){b.textContent='Try again';b.disabled=false;});});});
     app.querySelectorAll('[data-edit]').forEach(function(e){e.addEventListener('click',function(){editListing(+this.dataset.edit);});});
     app.querySelectorAll('[data-rename]').forEach(function(e){e.addEventListener('click',function(){renameAgent(+this.dataset.rename);});});
-    app.querySelectorAll('[data-mng]').forEach(function(e){e.addEventListener('click',function(){manage(this.dataset.mng, this.dataset.idx!=null?+this.datase
+    app.querySelectorAll('[data-mng]').forEach(function(e){e.addEventListener('click',function(){manage(this.dataset.mng, this.dataset.idx!=null?+this.dataset.idx:null);});});
+    var hs=document.getElementById('hideSteps'); if(hs)hs.addEventListener('click',function(ev){ev.preventDefault();localStorage.setItem('ov_setup_hidden','1');render(D);});
+    var ss=document.getElementById('showSteps'); if(ss)ss.addEventListener('click',function(ev){ev.preventDefault();localStorage.removeItem('ov_setup_hidden');render(D);});
+    app.querySelectorAll('[data-call]').forEach(function(e){e.addEventListener('click',function(){var d=document.getElementById('cdet'+this.dataset.call);if(d)d.hidden=!d.hidden;});});
+  }
+  function load(){
+    fetch(API+'/api/panel-data?loc='+encodeURIComponent(loc)).then(function(r){return r.json();}).then(render)
+    .catch(function(){app.innerHTML='<div class="card"><div class="empty">Could not load right now — refresh in a moment.</div></div>';});
+  }
+  if(loc)load(); else app.innerHTML='<div class="card"><div class="empty">Missing account id.</div></div>';
+})();
+</script>
+</body>
+</html>
