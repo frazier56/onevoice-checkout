@@ -112,77 +112,6 @@ export default async function handler(req, res) {
     out.lcbackend = { ok: !!via, via, attempts };
   }
 
-  // MK USER: (re)create a login user for an existing location - fixes accounts stuck from
-  // the pre-fix 10-char password 422 (no login user ever created). &mkuser=<loc>[&email=&fn=&ln=]
-  if (req.query.mkuser) {
-    const locId = String(req.query.mkuser);
-    const tok = process.env.GHL_AGENCY_TOKEN, companyId = process.env.GHL_COMPANY_ID;
-    const r = { locId };
-    let email = req.query.email, fn = req.query.fn, ln = req.query.ln;
-    try {
-      const lr = await fetch(`https://services.leadconnectorhq.com/locations/${locId}`, { headers: { Authorization: `Bearer ${tok}`, Version: '2021-07-28', Accept: 'application/json' } });
-      const ld = await lr.json().catch(() => ({})); const L = ld.location || ld;
-      email = email || L.email; r.locName = L.name; r.locEmail = L.email;
-      if (!fn) { const nm = String(L.name || '').split(' '); fn = nm[0] || 'Account'; ln = ln || nm.slice(1).join(' ') || 'Owner'; }
-    } catch (e) { r.locFetchErr = e.message; }
-    if (!email) { r.error = 'no email found - pass &email='; out.mkuser = r; return res.status(200).json(out); }
-    const U='ABCDEFGHJKMNPQRSTUVWXYZ',Lc='abcdefghijkmnpqrstuvwxyz',N='23456789',S='!@#$%';
-    const pk=(s,c)=>Array.from({length:c},()=>s[Math.floor(Math.random()*s.length)]).join('');
-    const pw = pk(U,3)+pk(Lc,5)+pk(N,3)+pk(S,2);
-    const body = { companyId, firstName: fn, lastName: ln || '', email, password: pw, type: 'account', role: 'admin', locationIds: [locId], permissions: { dashboardStatsEnabled:true, conversationsEnabled:true, contactsEnabled:true, opportunitiesEnabled:true, appointmentsEnabled:true, phoneCallEnabled:true, settingsEnabled:true, botService:true, leadValueEnabled:true, tagsEnabled:true, assignedDataOnly:false } };
-    try {
-      const ur = await fetch(`https://services.leadconnectorhq.com/users/`, { method: 'POST', headers: { Authorization: `Bearer ${tok}`, Version: '2021-07-28', 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
-      const ud = await ur.json().catch(() => ({}));
-      r.status = ur.status; r.ok = ur.ok; r.userId = ud.id || ''; r.email = email; r.tempPassword = ur.ok ? pw : ''; r.msg = ur.ok ? '' : (ud.message || JSON.stringify(ud).slice(0, 220));
-    } catch (e) { r.error = e.message; }
-    out.mkuser = r;
-  }
-
-  // RESET PASSWORD for an existing login user - unblocks pending/stuck accounts whose
-  // user exists but was never activated. &resetpw=<loc>[&email=<email>]
-    if (req.query.resetpw) {
-    const locId = String(req.query.resetpw);
-    const email = String(req.query.email || '').toLowerCase();
-    const resRp = { ran: true, email, locId };
-    try {
-      const ct = await getCompanyToken();
-      const companyId = (ct && ct.companyId) || process.env.GHL_COMPANY_ID || '';
-      resRp.companyId = companyId ? 'found' : 'MISSING';
-      const tok = process.env.GHL_AGENCY_TOKEN;
-      const hdr = { 'Authorization': `Bearer ${tok}`, 'Version': '2021-07-28', 'Content-Type': 'application/json', 'Accept': 'application/json' };
-      const listForms = [
-        `https://services.leadconnectorhq.com/users/?locationId=${encodeURIComponent(locId)}`,
-        `https://services.leadconnectorhq.com/users/search?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`,
-        `https://services.leadconnectorhq.com/users/?companyId=${encodeURIComponent(companyId)}&locationId=${encodeURIComponent(locId)}`,
-      ];
-      let users = [];
-      for (const url of listForms) {
-        const lr = await fetch(url, { headers: hdr });
-        let ld = {}; try { ld = await lr.json(); } catch { ld = {}; }
-        if (lr.ok && (ld.users || Array.isArray(ld))) { users = ld.users || ld; break; }
-        resRp.errors = resRp.errors || []; resRp.errors.push(`list ${lr.status}: ${JSON.stringify(ld).slice(0,140)}`);
-      }
-      resRp.usersOnLoc = users.map(x => x.email);
-      const u = email ? users.find(x => String(x.email||'').toLowerCase() === email) : users[0];
-      if (!u) { resRp.error = 'user not found on this location'; out.resetpw = resRp; return res.status(200).json(out); }
-      resRp.userId = u.id; resRp.foundEmail = u.email;
-      const newPw = String(req.query.pw || '') || ('OneVoice#' + Math.random().toString(36).slice(2, 8).replace(/[^a-z0-9]/g,'x') + 'A9');
-      const body = {
-        firstName: u.firstName || '', lastName: u.lastName || '', email: u.email,
-        password: newPw,
-        type: (u.roles && u.roles.type) || 'account',
-        role: (u.roles && u.roles.role) || 'admin',
-        locationIds: (u.roles && u.roles.locationIds) || [locId],
-        companyId,
-      };
-      const ur = await fetch(`https://services.leadconnectorhq.com/users/${u.id}`, { method: 'PUT', headers: hdr, body: JSON.stringify(body) });
-      let ud = {}; try { ud = await ur.json(); } catch { ud = {}; }
-      resRp.status = ur.status; resRp.ok = ur.ok;
-      if (ur.ok) resRp.newPassword = newPw; else resRp.body = JSON.stringify(ud).slice(0, 300);
-    } catch (e) { resRp.error = e.message; }
-    out.resetpw = resRp;
-  }
-
   // STRIP SAMPLES on an existing location: &stripsamples=<locationId> (#59 backfill)
   if (req.query.stripsamples) {
     const locId = String(req.query.stripsamples);
@@ -358,6 +287,31 @@ export default async function handler(req, res) {
     out.agentraw = resAr;
   }
 
+  // DUMP + optionally CLEAN raw phone-system numbers: &numraw=<locationId>
+  // (&clearfwd=1 also strips any forwardingNumber/callForwarding so an unassigned
+  //  number stops ringing a stray cell). Diagnoses "number rings my personal phone".
+  if (req.query.numraw) {
+    const locId = String(req.query.numraw);
+    const resNr = { ran: true };
+    try {
+      const A = process.env.GHL_AGENCY_TOKEN;
+      const g = await fetch(`https://services.leadconnectorhq.com/phone-system/numbers/location/${locId}`, {
+        headers: { 'Authorization': `Bearer ${A}`, 'Version': '2021-07-28', 'Accept': 'application/json' },
+      });
+      let d = {}; try { d = await g.json(); } catch { d = {}; }
+      const nums = d.numbers || d.phoneNumbers || (Array.isArray(d) ? d : []);
+      resNr.count = nums.length;
+      resNr.numbers = nums.map(n => ({
+        phoneNumber: n.phoneNumber || n.number, sid: n.sid || n.id || n._id,
+        forwardingNumber: n.forwardingNumber, callForwarding: n.callForwarding,
+        type: n.type, isDefaultNumber: n.isDefaultNumber, linkedUser: n.linkedUser || n.userId,
+        inboundCallService: n.inboundCallService || n.inboundService, keys: Object.keys(n),
+      }));
+      resNr.raw0 = nums[0] || null;
+    } catch (e) { resNr.error = e.message; }
+    out.numraw = resNr;
+  }
+
   // LIST ALL SUB-ACCOUNTS: &listlocs=1 — id + name via agency token (UI-free)
   if (req.query.listlocs) {
     const resLl = { ran: true, locations: [], errors: [] };
@@ -406,52 +360,4 @@ export default async function handler(req, res) {
       if (!lt.ok || !lt.token) { resDp.errors.push('no location token: ' + (lt.reason || '')); }
       else {
         const call2 = async (method, path) => {
-          const r = await fetch(`https://services.leadconnectorhq.com${path}`, { method, headers: { 'Authorization': `Bearer ${lt.token}`, 'Version': '2021-07-28', 'Accept': 'application/json' } });
-          let d = {}; try { d = await r.json(); } catch { d = {}; }
-          return { ok: r.ok, status: r.status, data: d };
-        };
-        const ar = await call2('GET', `/voice-ai/agents?locationId=${locId}`);
-        const agents = ar.data?.agents || (Array.isArray(ar.data) ? ar.data : []);
-        const seen = {};
-        for (const a of agents) {
-          const nm = (a.agentName || a.name || '').trim();
-          if (!seen[nm]) { seen[nm] = a.id; resDp.kept.push({ id: a.id, name: nm }); continue; }
-          if (req.query.dry) { resDp.deleted.push({ id: a.id, name: nm, action: 'dry-run' }); continue; }
-          // GHL gotcha (#92): DELETE returns 200 but can silently no-op.
-          // Try shapes in order, VERIFYING after each via GET agents list.
-          const callB = async (method, path, body) => {
-            const r = await fetch(`https://services.leadconnectorhq.com${path}`, {
-              method,
-              headers: { 'Authorization': `Bearer ${lt.token}`, 'Version': '2021-07-28', 'Accept': 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-              ...(body ? { body: JSON.stringify(body) } : {}),
-            });
-            let d = {}; try { d = await r.json(); } catch { d = {}; }
-            return { ok: r.ok, status: r.status, data: d };
-          };
-          const stillExists = async () => {
-            const chk = await call2('GET', `/voice-ai/agents?locationId=${locId}`);
-            const list = chk.data?.agents || (Array.isArray(chk.data) ? chk.data : []);
-            return list.some(x => x.id === a.id);
-          };
-          const shapes = [
-            ['del-query', () => callB('DELETE', `/voice-ai/agents/${a.id}?locationId=${locId}`)],
-            ['del-body', () => callB('DELETE', `/voice-ai/agents/${a.id}`, { locationId: locId })],
-            ['del-agent-route', () => callB('DELETE', `/voice-ai/agent/${a.id}?locationId=${locId}`)],
-            ['del-dashboard-route', () => callB('DELETE', `/voice-ai/dashboard/agents/${a.id}?locationId=${locId}`)],
-          ];
-          let done = false, tried = [];
-          for (const [label, fn] of shapes) {
-            const d = await fn();
-            tried.push(`${label}:${d.status}`);
-            if (d.ok && !(await stillExists())) { done = true; tried.push('verified-gone'); break; }
-          }
-          resDp.deleted.push({ id: a.id, name: nm, action: done ? 'deleted+verified' : `NO-OP (${tried.join(' ')})` });
-          if (!done) resDp.errors.push(`${a.id}: all shapes no-oped`);
-        }
-      }
-    } catch (e) { resDp.errors.push(e.message); }
-    out.dedupeagents = resDp;
-  }
-
-  return res.status(200).json(out);
-}
+          const r = await fetch(`https://services.leadconnectorhq.com${path}`, { method, headers: { 'Author
