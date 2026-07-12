@@ -137,8 +137,8 @@ export default async function handler(req, res) {
       if (v !== undefined) return v || '';
       return m; // leave genuinely-unknown tags untouched
     });
-    const ai = prompt.indexOf(ID_A);
-    if (ai !== -1) { const bi = prompt.indexOf(ID_B, ai); prompt = bi !== -1 ? prompt.slice(0, ai) + prompt.slice(bi + ID_B.length) : prompt.slice(0, ai); }
+    // remove ANY prior identity block (header text may differ across versions) - match on stable markers
+    prompt = prompt.replace(/\n*### CURRENT LISTING & IDENTITY[\s\S]*?### END CURRENT LISTING & IDENTITY ###/g, '');
     const idRows = [];
     if (eName) idRows.push(`- Your name is ${eName}. Introduce yourself by this name at the start of every call.`);
     if (eRealtor) idRows.push(`- You work for ${eRealtor}${eBiz ? ` of ${eBiz}` : ''}. Say who you represent early in the call.`);
