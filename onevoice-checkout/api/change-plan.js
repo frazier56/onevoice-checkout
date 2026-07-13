@@ -75,6 +75,45 @@ export default async function handler(req, res) {
 
   const n = plan.count;
 
+  // PRORATION PREVIEW: GET ?preview=1&tier=&term= — the exact amount due today plus
+  // the card on file, shown BEFORE the customer confirms. Trial-aware (no charge yet).
+  if (isGet && (body.preview === '1' || body.preview === 1 || body.preview === true)) {
+    const pTier = String(body.tier || '').toLowerCase();
+    const pTerm = String(body.term || '').toLowerCase();
+    if (!PRICE[pTier] || !TERM[pTerm]) return res.status(200).json({ ok: false, message: 'That plan option isn’t available.' });
+    const tierRank = { basic: 0, pro: 1 }, termRank = { monthly: 0, quarter: 1, annual: 2 };
+    const isDown = tierRank[pTier] < tierRank[plan.tier] || (pTier === plan.tier && termRank[pTerm] < termRank[plan.term]);
+    const trialing = plan.sub.status === 'trialing';
+    const recurring = recurringFor(pTier, pTerm, n);
+    const fmtDate = (u) => u ? new Date(u * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+    const trialEndHuman = fmtDate(plan.sub.trial_end);
+    const renewalHuman = fmtDate(plan.sub.current_period_end);
+
+    let card = null;
+    try {
+      let pmId = plan.sub.default_payment_method;
+      if (!pmId) { const c = await stripe.customers.retrieve(plan.customerId); pmId = c.invoice_settings && c.invoice_settings.default_payment_method; }
+      if (pmId) { const pm = await stripe.paymentMethods.retrieve(typeof pmId === 'string' ? pmId : pmId.id); if (pm && pm.card) card = { brand: pm.card.brand, last4: pm.card.last4 }; }
+    } catch { /* card optional */ }
+
+    let dueTodayCents = 0, previewPriceId = null;
+    if (!trialing && !isDown) {
+      // active upgrade — exact proration from a preview invoice (price reused on confirm)
+      try {
+        const t = TERM[pTerm];
+        const price = await stripe.prices.create({ currency: 'usd', unit_amount: recurring, recurring: { interval: t.interval, interval_count: t.interval_count }, product_data: { name: `OneVoice ${pTier === 'pro' ? 'Pro' : 'Basic'} - ${n} listing${n > 1 ? 's' : ''} (${pTerm})` } });
+        previewPriceId = price.id;
+        const up = await stripe.invoices.retrieveUpcoming({ customer: plan.customerId, subscription: plan.subId, subscription_items: [{ id: plan.sub.items.data[0].id, price: price.id }], subscription_proration_behavior: 'always_invoice' });
+        let sum = 0; for (const l of (up.lines && up.lines.data) || []) { if (l.proration) sum += l.amount; }
+        dueTodayCents = sum > 0 ? sum : (up.amount_due || 0);
+      } catch (e) { dueTodayCents = null; } // UI falls back to "prorated difference"
+    }
+    return res.status(200).json({
+      ok: true, dueTodayCents, deferred: isDown || trialing, trialing,
+      trialEndHuman, renewalHuman, recurringCents: recurring, card, previewPriceId,
+    });
+  }
+
   if (isGet) {
     // Direction of a move relative to the current plan, so the UI can frame it as
     // an upgrade (charge/features up), a downgrade (deferred to renewal), or a
@@ -137,12 +176,22 @@ export default async function handler(req, res) {
     const t = TERM[newTerm];
     const recurring = recurringFor(newTier, newTerm, n);
     const planName = `OneVoice ${newTier === 'pro' ? 'Pro' : 'Basic'} - ${n} listing${n > 1 ? 's' : ''} (${newTerm})`;
-    const price = await stripe.prices.create({
+    // Reuse the exact price the confirm screen previewed (so what we charge == what we
+    // showed), but only after validating it matches the expected amount + interval.
+    let price = null;
+    if (body.priceId) {
+      try {
+        const p = await stripe.prices.retrieve(String(body.priceId));
+        if (p && p.active && p.unit_amount === recurring && p.recurring && p.recurring.interval === t.interval && p.recurring.interval_count === t.interval_count) price = { id: p.id };
+      } catch { /* fall through to create */ }
+    }
+    if (!price) price = await stripe.prices.create({
       currency: 'usd', unit_amount: recurring,
       recurring: { interval: t.interval, interval_count: t.interval_count },
       product_data: { name: planName },
     });
     const sub = plan.sub;
+    const trialing = sub.status === 'trialing';
     const tierRank = { basic: 0, pro: 1 }, termRank = { monthly: 0, quarter: 1, annual: 2 };
     const isDowngrade = tierRank[newTier] < tierRank[plan.tier]
       || (newTier === plan.tier && termRank[newTerm] < termRank[plan.term]);
@@ -171,7 +220,7 @@ export default async function handler(req, res) {
     // For upgrades (always_invoice), Stripe just created + charged a proration invoice.
     // Fetch the exact amount so the UI can show "charged today: $X" on the receipt screen.
     let chargedTodayCents = 0;
-    if (!isDowngrade) {
+    if (!isDowngrade && !trialing) {
       try {
         const invs = await stripe.invoices.list({ customer: plan.customerId, subscription: plan.subId, limit: 1 });
         const inv = (invs.data || [])[0];
@@ -180,16 +229,21 @@ export default async function handler(req, res) {
     }
     const periodEnd = plan.sub && plan.sub.current_period_end ? plan.sub.current_period_end : 0;
     const renewalHuman = periodEnd ? new Date(periodEnd * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'your renewal';
+    const trialEndHuman = plan.sub && plan.sub.trial_end ? new Date(plan.sub.trial_end * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : renewalHuman;
     const newName = newTier === 'pro' ? 'Pro' : 'Basic';
     const toPro = newTier === 'pro' && plan.tier !== 'pro';
-    const message = isDowngrade
-      ? `Done — you’ll switch to ${newName}, billed ${TERM[newTerm].label.toLowerCase()}, at your renewal on ${renewalHuman}. You keep everything you’ve already paid for until then; nothing extra was charged today.`
-      : toPro
-        ? `You’re on Pro now — we charged the prorated difference to your card on file. Refresh your dashboard to see your Pro tools: lead scoring and the pipeline board are live right away; text-answering and calendar sync finish provisioning within about an hour.`
-        : `Done — you’re now billed ${TERM[newTerm].label.toLowerCase()}. We charged the prorated difference today and your plan updated right away.`;
+    const termWord = TERM[newTerm].label.toLowerCase();
+    const totalStr = '$' + (recurring / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const message = trialing
+      ? `Done — you’re now on ${newName}, billed ${termWord}. You’re still in your free trial, so nothing is charged today; your first charge is on ${trialEndHuman} at ${totalStr}.`
+      : isDowngrade
+        ? `Done — you’ll switch to ${newName}, billed ${termWord}, at your renewal on ${renewalHuman}. You keep everything you’ve already paid for until then; nothing extra was charged today.`
+        : toPro
+          ? `You’re on Pro now — we charged the prorated difference to your card on file. Refresh your dashboard to see your Pro tools: lead scoring and the pipeline board are live right away; text-answering and calendar sync finish provisioning within about an hour.`
+          : `Done — you’re now billed ${termWord}. We charged the prorated difference today and your plan updated right away.`;
     return res.status(200).json({
-      ok: true, newTier, newTerm, recurringCents: recurring, deferred: isDowngrade, upgradedToPro: toPro,
-      chargedTodayCents, renewalHuman, message,
+      ok: true, newTier, newTerm, recurringCents: recurring, deferred: isDowngrade || trialing, upgradedToPro: toPro, trialing,
+      chargedTodayCents, renewalHuman, trialEndHuman, message,
     });
   } catch (e) {
     return res.status(200).json({ ok: false, message: `Could not change your plan: ${e.message}` });
