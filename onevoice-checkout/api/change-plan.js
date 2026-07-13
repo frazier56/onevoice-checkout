@@ -22,6 +22,7 @@
    ============================================================================= */
 
 import Stripe from 'stripe';
+import { kvGet, kvSet } from '../lib/kv.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -89,12 +90,26 @@ export default async function handler(req, res) {
     const trialEndHuman = fmtDate(plan.sub.trial_end);
     const renewalHuman = fmtDate(plan.sub.current_period_end);
 
+    // Payment method on file → a friendly label. Handles raw cards (brand + last4)
+    // AND Stripe Link (type:'link' has no .card object) AND bank debit.
+    const BRAND = { visa: 'Visa', mastercard: 'Mastercard', amex: 'Amex', american_express: 'Amex', discover: 'Discover', diners: 'Diners Club', jcb: 'JCB', unionpay: 'UnionPay' };
+    const pmLabel = (pm) => {
+      if (!pm || typeof pm !== 'object') return null;
+      if (pm.card) return (BRAND[String(pm.card.brand || '').toLowerCase()] || 'Card') + ' •••• ' + pm.card.last4;
+      if (pm.type === 'link') return 'Stripe Link' + (pm.link && pm.link.email ? ' (' + pm.link.email + ')' : '');
+      if (pm.type === 'us_bank_account' && pm.us_bank_account) return 'Bank •••• ' + pm.us_bank_account.last4;
+      if (pm.type) return String(pm.type).replace(/_/g, ' ');
+      return null;
+    };
     let card = null;
-    const asCard = (pm) => (pm && pm.card) ? { brand: pm.card.brand, last4: pm.card.last4 } : null;
-    let pmId = plan.sub.default_payment_method || null;
-    if (!pmId) { try { const c = await stripe.customers.retrieve(plan.customerId); pmId = (c.invoice_settings && c.invoice_settings.default_payment_method) || null; } catch { /* ignore */ } }
-    if (pmId) { try { card = asCard(await stripe.paymentMethods.retrieve(typeof pmId === 'string' ? pmId : pmId.id)); } catch { /* ignore */ } }
-    if (!card) { try { const list = await stripe.paymentMethods.list({ customer: plan.customerId, type: 'card', limit: 1 }); card = asCard(list.data && list.data[0]); } catch { /* ignore */ } }
+    try {
+      const s = await stripe.subscriptions.retrieve(plan.subId, { expand: ['default_payment_method'] });
+      let pm = s.default_payment_method;
+      if (pm && typeof pm === 'string') pm = await stripe.paymentMethods.retrieve(pm);
+      const label = pmLabel(pm);
+      if (label) card = { label };
+    } catch { /* card optional */ }
+    if (!card) { try { const c = await stripe.customers.retrieve(plan.customerId, { expand: ['invoice_settings.default_payment_method'] }); const label = pmLabel(c.invoice_settings && c.invoice_settings.default_payment_method); if (label) card = { label }; } catch { /* ignore */ } }
 
     let dueTodayCents = 0, previewPriceId = null;
     if (!trialing && !isDown) {
@@ -241,6 +256,13 @@ export default async function handler(req, res) {
         : toPro
           ? `You’re on Pro now — we charged the prorated difference to your card on file. Refresh your dashboard to see your Pro tools: lead scoring and the pipeline board are live right away; text-answering and calendar sync finish provisioning within about an hour.`
           : `Done — you’re now billed ${termWord}. We charged the prorated difference today and your plan updated right away.`;
+    // Plan change history (KV) so the dashboard can show a timestamped log.
+    try {
+      const key = 'ov:planhistory:' + loc;
+      const hist = (await kvGet(key)) || [];
+      hist.unshift({ ts: Date.now(), from: `${plan.tier}/${plan.term}`, to: `${newTier}/${newTerm}`, chargedCents: chargedTodayCents || 0, deferred: isDowngrade || trialing });
+      await kvSet(key, hist.slice(0, 25));
+    } catch { /* history is best-effort */ }
     return res.status(200).json({
       ok: true, newTier, newTerm, recurringCents: recurring, deferred: isDowngrade || trialing, upgradedToPro: toPro, trialing,
       chargedTodayCents, renewalHuman, trialEndHuman, message,

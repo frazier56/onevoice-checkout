@@ -3,6 +3,7 @@
    Tokens stay server-side: agency PIT for location/custom-values/numbers,
    minted location token for Voice AI agents. */
 import { getLocationToken } from '../lib/ghlTokens.js';
+import { kvGet } from '../lib/kv.js';
 
 const GHL = 'https://services.leadconnectorhq.com';
 const V = '2021-07-28';
@@ -76,6 +77,8 @@ export default async function handler(req, res) {
     // these are what the customer picks from when connecting a waiting listing.
     const boundSet = new Set(out.listings.map(l => l.number).filter(Boolean));
     out.unassignedNumbers = out.numbers.filter(n => !boundSet.has(n));
+
+    try { out.planHistory = (await kvGet('ov:planhistory:' + loc)) || []; } catch { out.planHistory = []; }
 
     out.steps = {
       numberBought: out.numbers.length > 0,
