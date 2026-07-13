@@ -72,6 +72,11 @@ export default async function handler(req, res) {
       };
     });
 
+    // numbers the location owns that are NOT yet bound to any listing/agent —
+    // these are what the customer picks from when connecting a waiting listing.
+    const boundSet = new Set(out.listings.map(l => l.number).filter(Boolean));
+    out.unassignedNumbers = out.numbers.filter(n => !boundSet.has(n));
+
     out.steps = {
       numberBought: out.numbers.length > 0,
       aiConnected: out.listings.some(l => l.live),

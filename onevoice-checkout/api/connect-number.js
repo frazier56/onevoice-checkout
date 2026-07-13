@@ -28,6 +28,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const loc = String(req.query.loc || '').trim();
   const targetAgent = String(req.query.agentId || '').trim(); // optional: connect ONLY this listing
+  const wantNumber = String(req.query.number || '').trim();   // optional: bind THIS specific number
   if (!/^[A-Za-z0-9]{15,32}$/.test(loc)) return res.status(400).json({ ok: false, message: 'Missing or invalid ?loc=' });
 
   const out = { ok: false, assigned: [], already: [], message: '' };
@@ -47,12 +48,23 @@ export default async function handler(req, res) {
 
     // Plan: every agent must be PUBLISHED on a number. Keep an agent's existing
     // inboundNumber; otherwise give it the next free number the location owns.
+    // A number is "bound" if any agent claims it OR the number itself routes to a
+    // Voice AI (inboundCallService) — GHL stores the binding on the number, and an
+    // agent's inboundNumber field is often blank even when it's actually connected.
     const boundNums = new Set(agents.map(a => a.inboundNumber).filter(Boolean));
+    for (const n of rawNums) {
+      const svc = n.inboundCallService || n.inboundService;
+      if (svc && svc.type === 'voice_ai' && svc.value) boundNums.add(n.phoneNumber || n.number);
+    }
     const free = numbers.filter(n => !boundNums.has(n));
     const plan = [];
     for (const a of agents) {
       if (targetAgent && a.id !== targetAgent) continue; // customer picked ONE listing to connect
-      const num = a.inboundNumber || (free.length ? free.shift() : '');
+      // If the customer picked a specific number for this listing, use it (only if
+      // the location owns it and it isn't already bound to another agent).
+      const num = (wantNumber && a.id === targetAgent && free.includes(wantNumber))
+        ? wantNumber
+        : (a.inboundNumber || (free.length ? free.shift() : ''));
       if (num) plan.push({ a, num });
     }
     if (!plan.length) { out.message = 'No phone number to connect yet - buy your number first (Settings > Phone System), then refresh and try again.'; return res.status(200).json(out); }
