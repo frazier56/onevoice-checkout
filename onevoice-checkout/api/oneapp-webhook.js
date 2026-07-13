@@ -72,7 +72,7 @@ function customerHtml(o) {
     ${previewLink ? `<p style="font-size:14px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Want another look at the design you picked? <a href="${previewLink}" style="color:#0B8C80;font-weight:700;">View your preview →</a></p>` : ''}
   </td></tr>
   <tr><td style="padding:6px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fbfaf6;border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
-    <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:10px;">What your plan covers — $199/mo, billed $597 every 3 months</div>
+    <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:10px;">What your plan covers — $199/mo, billed $597 every 4 months (4th month FREE)</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#1A2233;">
       <tr><td style="padding:4px 0;color:#5a6677;">Your website</td><td align="right" style="padding:4px 0;font-weight:700;">Built FREE — no setup fee</td></tr>
       <tr><td style="padding:4px 0;color:#5a6677;">Hosting &amp; security</td><td align="right" style="padding:4px 0;font-weight:600;">Fully managed, always on</td></tr>
@@ -80,7 +80,7 @@ function customerHtml(o) {
       <tr><td style="padding:4px 0;color:#5a6677;">Business email</td><td align="right" style="padding:4px 0;font-weight:600;">On your own domain</td></tr>
       <tr><td style="padding:4px 0;color:#5a6677;">Your free add-on</td><td align="right" style="padding:4px 0;font-weight:700;">${esc(o.freebieLabel)}</td></tr>
     </table>
-    <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Billed $597 every 3 months. Cancel anytime — you simply won't be billed again. Payments are non-refundable once a period starts. No hidden fees.</div>
+    <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Billed $597 every 4 months — three months’ price, 4th month FREE. Cancel anytime — you simply won't be billed again. Payments are non-refundable once a period starts. No hidden fees.</div>
   </td></tr></table></td></tr>
   <tr><td style="padding:16px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
     <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:8px;">Want more? Upgrade anytime</div>
@@ -103,7 +103,7 @@ function founderHtml(o, sessionId) {
     Customer notes: ${esc(o.notes) || '—'}<br><br>
     <b>To do:</b> register domain, deploy site from preview (apply notes), set up
     domain email, wire the free add-on, send hand-off email.<br>
-    Stripe session: ${esc(sessionId)} · $597/3-months subscription active (preview TTL extended to 60 days on payment).
+    Stripe session: ${esc(sessionId)} · $597-per-4-months (4th free) subscription active (preview TTL extended to 60 days on payment).
   </div>`;
 }
 
@@ -132,7 +132,7 @@ async function pipelineCard(contactId, o) {
   const stages = (p.stages || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
   return ghl('POST', '/opportunities/', {
     pipelineId: p.id, locationId: ORDERS_LOCATION_ID, pipelineStageId: stages[0]?.id || '',
-    name: `OneApp: ${o.company || o.name} — $597/qtr (build due 24h)`,
+    name: `OneApp: ${o.company || o.name} — $597/4mo (build due 24h)`,
     status: 'open', contactId, monetaryValue: 597,
   });
 }
