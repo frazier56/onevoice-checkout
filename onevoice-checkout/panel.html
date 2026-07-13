@@ -84,6 +84,15 @@
   .cprow{display:flex;justify-content:space-between;gap:14px;padding:8px 0;border-bottom:1px solid #eef1f4}
   .cprow b{text-align:right}
   .fine{font-size:11.5px;color:var(--mut);margin:10px 0 0;line-height:1.45}
+  /* compact the wide plan modal so it fits the dashboard widget with minimal scroll */
+  .modal.wide .m-h{padding:12px 18px}
+  .modal.wide .m-b{padding:12px 18px}
+  .modal.wide .plancard{padding:11px 12px}
+  .modal.wide .ptag{margin:2px 0 7px}
+  .modal.wide .plusline{margin-bottom:4px}
+  .modal.wide .pfeat{gap:4px;margin-bottom:9px}
+  .modal.wide .pfeat li{font-size:12px;line-height:1.3}
+  .modal.wide .fine{margin-top:8px}
   .modal .m-h{padding:16px 20px;border-bottom:1px solid var(--line);flex:0 0 auto}
   .modal .m-b{overflow:auto;flex:1 1 auto}
   .modal .msg{flex:0 0 auto}
@@ -282,7 +291,7 @@
       }
       openModal('<div class="m-h"><h3>Manage my plan</h3><p>You’re on <b>'+esc(q.current.label)+'</b> — '+fmtMo(q.current.perMonthCents)+'. Two plans, three ways to pay each. Pick any option to switch — you’ll confirm first.</p></div>'
         +'<div class="m-b"><div class="planwrap">'+planCard('basic')+planCard('pro')+'</div>'
-        +'<p class="fine">Changes take effect at your next renewal'+(q.renewalHuman?' ('+esc(q.renewalHuman)+')':'')+' — nothing is charged today. Move to a smaller plan or shorter billing and you keep everything you’ve already paid for until then. Prices shown are per month for your '+q.count+' listing'+(q.count>1?'s':'')+'.</p></div>'
+        +'<p class="fine"><b>Upgrades apply right away</b> — we charge the prorated difference to your card and your Pro tools turn on (refresh the dashboard; text &amp; calendar finish within ~1 hr). <b>Downgrades and shorter billing</b> take effect at your next renewal'+(q.renewalHuman?' ('+esc(q.renewalHuman)+')':'')+' with nothing charged today, and you keep what you’ve already paid for until then. Prices shown are per month for your '+q.count+' listing'+(q.count>1?'s':'')+'.</p></div>'
         +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button></div>');
       modal.classList.add('wide');
       document.querySelectorAll('.tbtn[data-term]').forEach(function(e){e.addEventListener('click',function(){confirmPlan(this.dataset.tier,this.dataset.term);});});
@@ -291,9 +300,12 @@
   function confirmPlan(tier,term){
     var q=window._planQ; if(!q)return; var cell=q.plans[tier].terms[term], cur=q.current;
     var deferred=(cell.direction==='downgrade'||cell.direction==='shorten');
+    var toPro=(cell.tier==='pro'&&q.tier!=='pro');
     var eff=deferred
       ? 'This starts at your renewal on <b>'+esc(q.renewalHuman||'your renewal date')+'</b>. You keep <b>'+esc(cur.label)+'</b> until then — nothing is charged today.'
-      : 'Your next invoice'+(q.renewalHuman?' on <b>'+esc(q.renewalHuman)+'</b>':'')+' reflects the new price. Nothing is charged today.';
+      : toPro
+        ? 'Pro switches on right away — we’ll charge the prorated difference to your card on file now. After it applies, <b>refresh your dashboard</b> to see your Pro tools. Lead scoring &amp; the pipeline board are instant; text-answering and calendar sync finish within about an hour.'
+        : 'We’ll charge the prorated difference to your card now and switch your billing right away.';
     openModal('<div class="m-h"><h3>Confirm plan change</h3></div><div class="m-b">'
       +'<div class="cprow"><span>From</span><b>'+esc(cur.label)+' ('+fmtMo(cur.perMonthCents)+')</b></div>'
       +'<div class="cprow"><span>To</span><b>'+esc(cell.tier==='pro'?'Pro':'Basic')+' · '+esc(shortTerm(cell.termLabel))+' · '+q.count+' listing'+(q.count>1?'s':'')+' ('+fmtMo(cell.perMonthCents)+')</b></div>'
