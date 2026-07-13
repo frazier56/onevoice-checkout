@@ -320,41 +320,33 @@
   }
   function confirmPlan(tier,term){
     var q=window._planQ; if(!q)return; var cell=q.plans[tier].terms[term], cur=q.current;
-    var deferred=(cell.direction==='downgrade'||cell.direction==='shorten');
-    var toPro=(cell.tier==='pro'&&q.tier!=='pro');
-    var eff=deferred
-      ? 'This starts at your renewal on <b>'+esc(q.renewalHuman||'your renewal date')+'</b>. You keep <b>'+esc(cur.label)+'</b> until then — nothing is charged today.'
-      : toPro
-        ? 'Pro switches on right away — we’ll charge the prorated difference to your card on file now. After it applies, <b>refresh your dashboard</b> to see your Pro tools. Lead scoring &amp; the pipeline board are instant; text-answering and calendar sync finish within about an hour.'
-        : 'We’ll charge the prorated difference to your card now and switch your billing right away.';
+    var toProNow=(cell.tier==='pro'&&q.tier!=='pro');
     var newName=(cell.tier==='pro'?'Pro':'Basic')+' · '+shortTerm(cell.termLabel)+' · '+q.count+' listing'+(q.count>1?'s':'');
     window._planPreview=null;
     openModal('<div class="m-h"><h3>Confirm plan change</h3></div><div class="m-b">'
-      +'<div class="cprow"><span>From</span><b>'+esc(cur.label)+'<div class="sub">'+money2(cur.recurringCents)+' '+cadence(cur.term)+' · '+fmtMo(cur.perMonthCents)+'</div></b></div>'
+      +'<div class="cprow"><span>From</span><b>'+esc(cur.label)+'<div class="sub">'+fmtMo(cur.perMonthCents)+'</div></b></div>'
       +'<div class="cprow"><span>To</span><b>'+esc(newName)+'<div class="sub">'+fmtMo(cell.perMonthCents)+'</div></b></div>'
       +'<div class="cprow tot"><span>New plan total</span><b>'+money2(cell.recurringCents)+' <span class="sub2">'+cadence(cell.term)+'</span></b></div>'
       +'<div class="cprow tot"><span>Due today</span><b id="cp_due">calculating…</b></div>'
-      +'<div class="fine" id="cp_card"></div>'
-      +'<p class="fine">'+eff+'</p></div>'
+      +'<p class="fine" id="cp_explain">Checking your billing…</p></div>'
       +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" id="m_back2">← Back</button><button class="cta" id="m_apply">Confirm change</button></div>');
-    // fetch the exact amount due today + the card on file
+    // one coherent explanation, driven by the real billing state (no contradictions)
     fetch(API+'/api/change-plan?loc='+encodeURIComponent(loc)+'&preview=1&tier='+encodeURIComponent(cell.tier)+'&term='+encodeURIComponent(cell.term))
       .then(function(r){return r.json();}).then(function(p){
         window._planPreview=p||null;
-        var due=document.getElementById('cp_due'), cd=document.getElementById('cp_card');
-        if(due){
-          if(!p||!p.ok){ due.textContent='Prorated difference'; }
-          else if(p.deferred){ due.textContent='$0 today'; }
-          else if(p.dueTodayCents!=null){ due.textContent=money2(p.dueTodayCents); }
-          else { due.textContent='Prorated difference'; }
+        var due=document.getElementById('cp_due'), ex=document.getElementById('cp_explain');
+        if(due){ due.textContent=(!p||!p.ok)?'Prorated difference':((p.dueTodayCents!=null)?money2(p.dueTodayCents):'Prorated difference'); }
+        if(ex){
+          if(!p||!p.ok){ ex.textContent='We’ll confirm the exact amount on the next screen.'; }
+          else{
+            var pm=(p.card&&p.card.label)?esc(p.card.label):'your payment method on file';
+            var proTail=toProNow?' Refresh your dashboard afterward to see your Pro tools (lead scoring &amp; the pipeline board are instant; text-answering and calendar sync finish within about an hour).':'';
+            if(p.trialing){ ex.innerHTML='You’re in your <b>free trial</b>, so <b>nothing is charged today</b>. Your plan switches over now — your first charge is on <b>'+esc(p.trialEndHuman||'your renewal date')+'</b> for <b>'+money2(p.recurringCents)+'</b>, billed to '+pm+'.'+proTail; }
+            else if(p.deferred){ ex.innerHTML='This takes effect at your renewal on <b>'+esc(p.renewalHuman||'your renewal date')+'</b>. You keep <b>'+esc(cur.label)+'</b> until then, and <b>nothing is charged today</b> — your new rate then bills to '+pm+'.'; }
+            else{ ex.innerHTML='We’ll charge <b>'+((p.dueTodayCents!=null)?money2(p.dueTodayCents):'the prorated difference')+'</b> to '+pm+' now and switch you to <b>'+esc(newName)+'</b> right away.'+proTail; }
+          }
         }
-        if(cd&&p&&p.ok){
-          var lines=[];
-          if(p.trialing){ lines.push('You’re in your free trial — <b>nothing is charged today</b>. Your first charge is '+esc(p.trialEndHuman||'when your trial ends')+' at '+money2(p.recurringCents)+'.'); }
-          if(p.card&&p.card.label){ lines.push((p.deferred?'Payment method on file: ':'Charged to ')+esc(p.card.label)); }
-          cd.innerHTML=lines.join('<br>');
-        }
-      }).catch(function(){var due=document.getElementById('cp_due'); if(due)due.textContent='Prorated difference';});
+      }).catch(function(){var due=document.getElementById('cp_due'); if(due)due.textContent='Prorated difference'; var ex=document.getElementById('cp_explain'); if(ex)ex.textContent='We’ll confirm the exact amount on the next screen.';});
     document.getElementById('m_back2').addEventListener('click',function(){managePlan();});
     document.getElementById('m_apply').addEventListener('click',function(){
       var b=this;b.textContent='Applying…';b.disabled=true;
@@ -367,8 +359,10 @@
   }
   function showPlanDone(d){
     var extra='';
-    if(d.deferred){
-      extra='<p class="fine" style="text-align:center">Nothing was charged today. Your card on file is billed at your next renewal'+(d.renewalHuman?' ('+esc(d.renewalHuman)+')':'')+'.</p>';
+    if(d.trialing){
+      extra='<p class="fine" style="text-align:center">You can switch plans again anytime before your trial ends.</p>';
+    } else if(d.deferred){
+      extra='<p class="fine" style="text-align:center">Nothing was charged today — your card on file is billed at your next renewal'+(d.renewalHuman?' ('+esc(d.renewalHuman)+')':'')+'.</p>';
     } else {
       var amt=(d.chargedTodayCents!=null&&d.chargedTodayCents>0)?money2(d.chargedTodayCents):'';
       extra=(amt?'<div class="cprow tot" style="justify-content:center;gap:10px;margin-top:6px"><span>Charged today</span><b>'+amt+'</b></div>':'')
