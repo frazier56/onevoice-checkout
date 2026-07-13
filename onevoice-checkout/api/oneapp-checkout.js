@@ -13,7 +13,7 @@ import Stripe from 'stripe';
 import { kvSet } from '../lib/kv.js';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const QUARTER_CENTS = 59700; // $597 per 3 months ($199/mo) — server-side source of truth
+const QUARTER_CENTS = 59700; // $597 per 4 months — pay 3 months, 4th FREE ($199/mo × 3) — server-side source of truth
 
 const ALLOWED_ORIGINS = [
   'https://onevoice.onesocial.ai',
@@ -55,10 +55,10 @@ export default async function handler(req, res) {
     const backTo = origin === 'https://frazier56.github.io' ? origin + '/onescore-preview/oneapp.html' : origin + '/oneapp.html';
 
     const summary =
-      'OneApp Managed Hosting — $199/month, billed $597 every 3 months. Your rebuilt website is FREE; this covers hosting, ' +
+      'OneApp Managed Hosting — $199/month — billed $597 every 4 months (you pay for 3 months, the 4th month is FREE). Your rebuilt website is FREE; this covers hosting, ' +
       'security, your domain (we find, buy, and manage it), a business email address on that domain, and your free add-on ' +
-      `(${FREEBIES[freeKey]}). No setup fee. Cancel anytime — you simply won't be billed for the next 3 months. ` +
-      'Payments are non-refundable once a 3-month period starts. Your finished site is delivered within 24 hours.';
+      `(${FREEBIES[freeKey]}). No setup fee. Cancel anytime — you simply won't be billed again. ` +
+      'Payments are non-refundable once a billing period starts. Your finished site is delivered within 24 hours.';
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -68,10 +68,10 @@ export default async function handler(req, res) {
         price_data: {
           currency: 'usd',
           unit_amount: QUARTER_CENTS,
-          recurring: { interval: 'month', interval_count: 3 },
+          recurring: { interval: 'month', interval_count: 4 },
           product_data: {
             name: 'OneApp Managed Hosting',
-            description: 'Website built free · hosting, security, domain + business email, 1 free add-on · $597 billed every 3 months, cancel anytime',
+            description: 'Website built free · hosting, security, domain + business email, 1 free add-on · $597 every 4 months (4th month free), cancel anytime',
           },
         },
       }],
