@@ -53,8 +53,8 @@ function upgradeEmailHtml(firstName, label, oldQ, newQ, nextDate) {
     </td></tr>
     <tr><td style="padding:6px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fbfaf6;border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#1A2233;">
-        <tr><td style="padding:4px 0;color:#5a6677;">Previous</td><td align="right" style="padding:4px 0;">${usd(oldQ)} every 3 months</td></tr>
-        <tr><td style="padding:4px 0;color:#5a6677;">New plan</td><td align="right" style="padding:4px 0;font-weight:800;">${usd(newQ)} every 3 months (${usd(Math.round(newQ / 3))}/mo)</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6677;">Previous</td><td align="right" style="padding:4px 0;">${usd(oldQ)} every 4 months (4th free)</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6677;">New plan</td><td align="right" style="padding:4px 0;font-weight:800;">${usd(newQ)} every 4 months (4th free) (${usd(Math.round(newQ / 3))}/mo)</td></tr>
         <tr><td style="padding:4px 0;color:#5a6677;">Starts</td><td align="right" style="padding:4px 0;font-weight:600;">${esc(nextDate)}</td></tr>
       </table>
       <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Same terms as always: cancel anytime and you won't be billed again.</div>
@@ -108,7 +108,7 @@ export default async function handler(req, res) {
     // LIST mode
     if (!q.apply) {
       return res.status(200).json({
-        found: subs.map(s => ({ subscription: s.subId, current: usd(s.quarterCents) + ' / 3 months (' + usd(Math.round(s.quarterCents / 3)) + '/mo)', nextBill: s.nextBill })),
+        found: subs.map(s => ({ subscription: s.subId, current: usd(s.quarterCents) + ' / 4 months (' + usd(Math.round(s.quarterCents / 3)) + '/mo)', nextBill: s.nextBill })),
         howToApply: `add &monthly=<new $/mo>&label=<plan name>&apply=1`,
       });
     }
@@ -127,7 +127,7 @@ export default async function handler(req, res) {
           currency: 'usd',
           product_data: { name: `OneApp Managed Hosting — ${label}` },
           unit_amount: newQuarterCents,
-          recurring: { interval: 'month', interval_count: 3 },
+          recurring: { interval: 'month', interval_count: 4 },
         },
       }],
       proration_behavior: 'none',
