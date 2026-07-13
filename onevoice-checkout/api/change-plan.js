@@ -90,11 +90,11 @@ export default async function handler(req, res) {
     const renewalHuman = fmtDate(plan.sub.current_period_end);
 
     let card = null;
-    try {
-      let pmId = plan.sub.default_payment_method;
-      if (!pmId) { const c = await stripe.customers.retrieve(plan.customerId); pmId = c.invoice_settings && c.invoice_settings.default_payment_method; }
-      if (pmId) { const pm = await stripe.paymentMethods.retrieve(typeof pmId === 'string' ? pmId : pmId.id); if (pm && pm.card) card = { brand: pm.card.brand, last4: pm.card.last4 }; }
-    } catch { /* card optional */ }
+    const asCard = (pm) => (pm && pm.card) ? { brand: pm.card.brand, last4: pm.card.last4 } : null;
+    let pmId = plan.sub.default_payment_method || null;
+    if (!pmId) { try { const c = await stripe.customers.retrieve(plan.customerId); pmId = (c.invoice_settings && c.invoice_settings.default_payment_method) || null; } catch { /* ignore */ } }
+    if (pmId) { try { card = asCard(await stripe.paymentMethods.retrieve(typeof pmId === 'string' ? pmId : pmId.id)); } catch { /* ignore */ } }
+    if (!card) { try { const list = await stripe.paymentMethods.list({ customer: plan.customerId, type: 'card', limit: 1 }); card = asCard(list.data && list.data[0]); } catch { /* ignore */ } }
 
     let dueTodayCents = 0, previewPriceId = null;
     if (!trialing && !isDown) {
