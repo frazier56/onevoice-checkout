@@ -180,6 +180,16 @@
     return '<div class="sec-h"><div><div class="kicker">Recent callers</div><h2>Every buyer your AI has talked to</h2></div></div><table class="calls"><thead><tr><th>Caller</th><th>Listing</th><th>Phone</th><th>When</th><th>Score</th></tr></thead><tbody>'+rows+'</tbody></table><div class="hint">Click any caller to see why they called, their key questions'+ (D&&D.planTier==='pro'?', their lead score':'') +' and the full transcript.</div>';
   }
 
+  function planLabelFromKey(k){if(!k)return '—';var p=String(k).split('/');var tier=p[0]==='pro'?'Pro':'Basic';var term={monthly:'Monthly',quarter:'Every 3 months',annual:'Annual'}[p[1]]||p[1];return tier+' · '+term;}
+  function planHistoryHtml(d){
+    var h=(d.planHistory||[]); if(!h.length) return '';
+    var rows=h.map(function(e){
+      var when=e.ts?ftime(new Date(e.ts).toISOString()):'';
+      var amt=e.deferred?'At renewal':((e.chargedCents>0)?money2(e.chargedCents):'$0');
+      return '<tr><td>'+esc(planLabelFromKey(e.from))+' → <b>'+esc(planLabelFromKey(e.to))+'</b></td><td>'+esc(when)+'</td><td class="num">'+esc(amt)+'</td></tr>';
+    }).join('');
+    return '<div class="sec-h"><div><div class="kicker">Plan history</div><h2>Every plan change on your account</h2></div></div><table><thead><tr><th>Change</th><th>When</th><th>Charged</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }
   function openModal(html){modal.innerHTML=html;modal.classList.remove('wide');ovl.classList.add('on');}
   function closeModal(){ovl.classList.remove('on');}
 
@@ -341,7 +351,7 @@
         if(cd&&p&&p.ok){
           var lines=[];
           if(p.trialing){ lines.push('You’re in your free trial — <b>nothing is charged today</b>. Your first charge is '+esc(p.trialEndHuman||'when your trial ends')+' at '+money2(p.recurringCents)+'.'); }
-          if(p.card){ lines.push((p.deferred?'Card on file: ':'Charged to ')+esc(cardBrand(p.card.brand))+' •••• '+esc(p.card.last4)); }
+          if(p.card&&p.card.label){ lines.push((p.deferred?'Payment method on file: ':'Charged to ')+esc(p.card.label)); }
           cd.innerHTML=lines.join('<br>');
         }
       }).catch(function(){var due=document.getElementById('cp_due'); if(due)due.textContent='Prorated difference';});
@@ -399,7 +409,7 @@
     if(view==='setup'){ app.innerHTML='<div class="card">'+(localStorage.getItem('ov_setup_hidden')==='1'?stepsHtml(d):hdr(d)+stepsHtml(d))+'</div>'; }
     else if(view==='listings'){ app.innerHTML='<div class="card">'+listingsHtml(d)+'</div>'; }
     else if(view==='calls'){ app.innerHTML='<div class="card">'+callsHtml(d)+'</div>'; }
-    else { app.innerHTML='<div class="card">'+listingsHtml(d)+'</div><div class="card">'+callsHtml(d)+'</div><div class="foot">Questions? Call us at (855) 770-0200 — a specialist will walk you through anything.</div>'; }
+    else { app.innerHTML='<div class="card">'+listingsHtml(d)+'</div><div class="card">'+callsHtml(d)+'</div>'+((d.planHistory&&d.planHistory.length)?'<div class="card">'+planHistoryHtml(d)+'</div>':'')+'<div class="foot">Questions? Call us at (855) 770-0200 — a specialist will walk you through anything.</div>'; }
     var cb=document.getElementById('connectBtn');
     if(cb)cb.addEventListener('click',function(){var b=this;b.textContent='Connecting…';b.disabled=true;
       fetch(API+'/api/connect-number?loc='+encodeURIComponent(loc)).then(function(r){return r.json();}).then(function(x){b.textContent=x.assigned&&x.assigned.length?'Connected!':(x.already&&x.already.length?'Already connected!':'Buy your number first (Step 1)');b.disabled=false;load();});});
