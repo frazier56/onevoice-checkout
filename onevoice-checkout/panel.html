@@ -62,6 +62,28 @@
   .ovl{position:fixed;inset:0;background:rgba(16,24,40,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
   .ovl.on{display:flex}
   .modal{background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(16,24,40,.25)}
+  .modal.wide{max-width:780px}
+  .planwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+  .plancard{border:1.5px solid var(--line);border-radius:12px;padding:14px}
+  .plancard.cur{border-color:var(--teal-d)}
+  .plancard .ph{display:flex;align-items:center;justify-content:space-between}
+  .plancard .pn{font-size:15px;font-weight:800}
+  .curpill{font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:var(--teal-d);border-radius:999px;padding:2px 8px;margin-left:6px}
+  .ptag{font-size:12px;color:var(--mut);margin:3px 0 9px}
+  .plusline{font-size:11.5px;font-weight:800;color:var(--mut);margin-bottom:6px}
+  .pfeat{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:6px}
+  .pfeat li{font-size:12.5px;color:#2a3340;padding-left:18px;position:relative;line-height:1.35}
+  .pfeat li:before{content:'✓';position:absolute;left:0;color:var(--teal-d);font-weight:800}
+  .terms{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+  .tbtn{border:1.5px solid var(--line);border-radius:9px;padding:8px 5px;background:#fff;cursor:pointer;text-align:center}
+  .tbtn:hover{border-color:var(--teal-d)}
+  .tbtn.cur{border-color:var(--teal-d);background:#eafaf7;cursor:default}
+  .tbtn .tt{font-size:11px;font-weight:700;color:#3a4553}
+  .tbtn .tp{font-size:13px;font-weight:800;margin:2px 0}
+  .tbtn .tn{font-size:9.5px;font-weight:800;letter-spacing:.2px;color:var(--teal-d);text-transform:uppercase}
+  .cprow{display:flex;justify-content:space-between;gap:14px;padding:8px 0;border-bottom:1px solid #eef1f4}
+  .cprow b{text-align:right}
+  .fine{font-size:11.5px;color:var(--mut);margin:10px 0 0;line-height:1.45}
   .modal .m-h{padding:16px 20px;border-bottom:1px solid var(--line);flex:0 0 auto}
   .modal .m-b{overflow:auto;flex:1 1 auto}
   .modal .msg{flex:0 0 auto}
@@ -141,7 +163,7 @@
     return '<div class="sec-h"><div><div class="kicker">Recent callers</div><h2>Every buyer your AI has talked to</h2></div></div><table class="calls"><thead><tr><th>Caller</th><th>Listing</th><th>Phone</th><th>When</th><th>Score</th></tr></thead><tbody>'+rows+'</tbody></table><div class="hint">Click any caller to see why they called, their key questions'+ (D&&D.planTier==='pro'?', their lead score':'') +' and the full transcript.</div>';
   }
 
-  function openModal(html){modal.innerHTML=html;ovl.classList.add('on');}
+  function openModal(html){modal.innerHTML=html;modal.classList.remove('wide');ovl.classList.add('on');}
   function closeModal(){ovl.classList.remove('on');}
 
   function editListing(i){
@@ -233,36 +255,54 @@
       });
     });
   }
+  var PLANFEAT={
+    basic:['Answers every call, 24/7','Screens & qualifies buyers','Books on the availability you set','Transcript + instant lead alert after every call'],
+    pro:['AI Lead Analyzer — scores every caller so you call the hottest back first','Calendar-Synced Booking — Google, Outlook or Apple, around your real schedule','Lead Pipeline Dashboard — New → Contacted → Showing → Won, nothing slips','Answers texts, too — Ava handles inbound SMS like a call']
+  };
+  function fmtMo(c){return '$'+(c/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2})+'/mo';}
+  function shortTerm(l){return String(l).replace(/\s*\(.*\)\s*/,'');} // "Every 3 months (save 25%)" -> "Every 3 months"
   function managePlan(){
     openModal('<div class="m-h"><h3>Manage my plan</h3><p>Loading your current plan…</p></div><div class="m-b"><div class="empty">One moment…</div></div>');
     fetch(API+'/api/change-plan?loc='+encodeURIComponent(loc)).then(function(r){return r.json();}).then(function(q){
       if(!q.ok){openModal('<div class="m-h"><h3>Manage my plan</h3></div><div class="m-b"><div class="msg err">'+esc(q.message||'Could not load your plan.')+'</div></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button></div>');return;}
-      var cards=q.options.map(function(o,i){
-        var per='$'+(o.perMonthCents/100).toLocaleString()+'/mo';
-        var badge=o.kind==='upgrade'?'<span style="color:#0B8C80;font-weight:700">▲ Upgrade</span>':(o.kind==='downgrade'?'<span style="color:#b26a00;font-weight:700">▼ Downgrade</span>':'<span style="color:#5a6677;font-weight:700">Billing</span>');
-        return '<button class="planopt" data-oi="'+i+'" style="text-align:left;border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;background:#fff;cursor:pointer;display:block;width:100%">'
-          +'<div style="display:flex;justify-content:space-between;gap:10px"><span style="font-weight:700">'+esc(o.label)+'</span><span style="font-weight:800">'+per+'</span></div>'
-          +'<div style="font-size:12px;color:#5a6677;margin-top:3px">'+badge+' · '+esc(o.note)+'</div></button>';
-      }).join('');
-      openModal('<div class="m-h"><h3>Manage my plan</h3><p>You’re on <b>'+esc(q.current.label)+'</b> ($'+(q.current.perMonthCents/100).toLocaleString()+'/mo). Pick a change below — you’ll confirm before anything updates. Nothing is charged today; your next invoice reflects the new price.</p></div>'
-        +'<div class="m-b" style="gap:10px">'+cards+'</div>'
+      window._planQ=q;
+      function termBtn(cell){
+        var tt=esc(shortTerm(cell.termLabel)), tp=fmtMo(cell.perMonthCents);
+        if(cell.current) return '<div class="tbtn cur"><div class="tt">'+tt+'</div><div class="tp">'+tp+'</div><div class="tn">✓ Your plan</div></div>';
+        var note=cell.savePct>0?('Save '+cell.savePct+'%'):'Switch';
+        return '<button class="tbtn" data-tier="'+cell.tier+'" data-term="'+cell.term+'"><div class="tt">'+tt+'</div><div class="tp">'+tp+'</div><div class="tn">'+note+'</div></button>';
+      }
+      function planCard(key){
+        var p=q.plans[key], isCur=(q.tier===key);
+        var feats=PLANFEAT[key].map(function(f){return '<li>'+f+'</li>';}).join('');
+        var plus=key==='pro'?'<div class="plusline">Includes everything in Basic, plus:</div>':'';
+        var terms=['monthly','quarter','annual'].map(function(tk){return termBtn(p.terms[tk]);}).join('');
+        return '<div class="plancard'+(isCur?' cur':'')+'"><div class="ph"><span class="pn">'+esc(p.name)+(isCur?'<span class="curpill">Current</span>':'')+'</span></div>'
+          +'<p class="ptag">'+esc(p.tagline)+'</p>'+plus+'<ul class="pfeat">'+feats+'</ul><div class="terms">'+terms+'</div></div>';
+      }
+      openModal('<div class="m-h"><h3>Manage my plan</h3><p>You’re on <b>'+esc(q.current.label)+'</b> — '+fmtMo(q.current.perMonthCents)+'. Two plans, three ways to pay each. Pick any option to switch — you’ll confirm first.</p></div>'
+        +'<div class="m-b"><div class="planwrap">'+planCard('basic')+planCard('pro')+'</div>'
+        +'<p class="fine">Changes take effect at your next renewal'+(q.renewalHuman?' ('+esc(q.renewalHuman)+')':'')+' — nothing is charged today. Move to a smaller plan or shorter billing and you keep everything you’ve already paid for until then. Prices shown are per month for your '+q.count+' listing'+(q.count>1?'s':'')+'.</p></div>'
         +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button></div>');
-      window._planOpts=q.options;
-      document.querySelectorAll('.planopt').forEach(function(e){e.addEventListener('click',function(){confirmPlan(window._planOpts[+this.dataset.oi],q.current);});});
+      modal.classList.add('wide');
+      document.querySelectorAll('.tbtn[data-term]').forEach(function(e){e.addEventListener('click',function(){confirmPlan(this.dataset.tier,this.dataset.term);});});
     }).catch(function(){flash({ok:false,message:'Network hiccup — try again.'});});
   }
-  function confirmPlan(o,cur){
-    var per='$'+(o.perMonthCents/100).toLocaleString()+'/mo';
-    openModal('<div class="m-h"><h3>Confirm plan change</h3><p>Review your change. Nothing is charged today — your next invoice reflects the new price.</p></div>'
-      +'<div class="m-b">'
-      +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eef1f4"><span style="color:#5a6677">From</span><span style="font-weight:600">'+esc(cur.label)+' ($'+(cur.perMonthCents/100).toLocaleString()+'/mo)</span></div>'
-      +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eef1f4"><span style="color:#5a6677">To</span><span style="font-weight:700">'+esc(o.label)+' ('+per+')</span></div>'
-      +'<p style="color:#5a6677;font-size:12.5px;margin:8px 0 0">'+esc(o.note)+'</p></div>'
+  function confirmPlan(tier,term){
+    var q=window._planQ; if(!q)return; var cell=q.plans[tier].terms[term], cur=q.current;
+    var deferred=(cell.direction==='downgrade'||cell.direction==='shorten');
+    var eff=deferred
+      ? 'This starts at your renewal on <b>'+esc(q.renewalHuman||'your renewal date')+'</b>. You keep <b>'+esc(cur.label)+'</b> until then — nothing is charged today.'
+      : 'Your next invoice'+(q.renewalHuman?' on <b>'+esc(q.renewalHuman)+'</b>':'')+' reflects the new price. Nothing is charged today.';
+    openModal('<div class="m-h"><h3>Confirm plan change</h3></div><div class="m-b">'
+      +'<div class="cprow"><span>From</span><b>'+esc(cur.label)+' ('+fmtMo(cur.perMonthCents)+')</b></div>'
+      +'<div class="cprow"><span>To</span><b>'+esc(cell.tier==='pro'?'Pro':'Basic')+' · '+esc(shortTerm(cell.termLabel))+' · '+q.count+' listing'+(q.count>1?'s':'')+' ('+fmtMo(cell.perMonthCents)+')</b></div>'
+      +'<p class="fine">'+eff+'</p></div>'
       +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" id="m_back2">← Back</button><button class="cta" id="m_apply">Confirm change</button></div>');
     document.getElementById('m_back2').addEventListener('click',function(){managePlan();});
     document.getElementById('m_apply').addEventListener('click',function(){
       var b=this;b.textContent='Applying…';b.disabled=true;
-      post('/api/change-plan',{loc:loc,tier:o.tier,term:o.term},function(d){flash(d);b.textContent='Confirm change';b.disabled=!!d.ok;if(d.ok)setTimeout(load,1200);});
+      post('/api/change-plan',{loc:loc,tier:cell.tier,term:cell.term},function(d){flash(d);b.textContent='Confirm change';b.disabled=!!d.ok;if(d.ok)setTimeout(load,1800);});
     });
   }
   function manage(kind, idx){
