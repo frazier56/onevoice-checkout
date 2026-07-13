@@ -69,8 +69,8 @@
   .modal .m-h p{font-size:12.5px;color:var(--mut);margin-top:3px}
   .modal .m-b{padding:16px 20px;display:grid;gap:12px}
   .fld label{display:block;font-size:11.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);margin-bottom:5px}
-  .fld input,.fld textarea{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit;font-size:14px}
-  .fld input:focus,.fld textarea:focus{outline:none;border-color:var(--teal)}
+  .fld input,.fld textarea,.fld select{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit;font-size:14px;background:#fff}
+  .fld input:focus,.fld textarea:focus,.fld select:focus{outline:none;border-color:var(--teal)}
   .fld input[disabled]{background:#f3f5f8;color:var(--mut)}
   .two{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   .m-f{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;flex:0 0 auto;background:#fff}
@@ -117,7 +117,7 @@
         +'<td><span class="agent" data-rename="'+i+'" title="Click to rename your assistant"><span class="av">'+ini+'</span><span class="nm">'+esc(l.agent)+'</span></span></td>'
         +'<td class="num">'+(l.number?esc(fmt(l.number)):'—')+'</td>'
         +'<td>'+(l.live?'<span class="pill live">● Answering 24/7</span>':'<span class="pill wait">Waiting for number</span>')+'</td>'
-        +'<td style="white-space:nowrap">'+(l.live?'':'<button class="rowbtn primaryish" data-connect="'+esc(l.id)+'" title="Connect a number you\'ve bought to this listing">Connect a number</button> ')+'<button class="rowbtn" data-mng="replace" data-idx="'+i+'">Replace</button> <button class="rowbtn danger" data-mng="cancel" data-idx="'+i+'">Cancel</button></td></tr>';
+        +'<td style="white-space:nowrap">'+(l.live?'':'<button class="rowbtn primaryish" data-connect="'+i+'" title="Connect a number you\'ve bought to this listing">Connect a number</button> ')+'<button class="rowbtn" data-mng="replace" data-idx="'+i+'">Replace</button> <button class="rowbtn danger" data-mng="cancel" data-idx="'+i+'">Cancel</button></td></tr>';
     }).join('');
     var body = rows ? '<table><thead><tr><th>Listing address</th><th>AI agent</th><th>Phone number</th><th>Status</th><th></th></tr></thead><tbody>'+rows+'</tbody></table><div class="hint">Tip: click a <b>listing</b> to update its details (price, beds, showings…) — click your <b>agent\'s name</b> to rename them.</div>'
       : '<div class="empty">Your AI assistant will appear here as soon as your account finishes setting up.</div>';
@@ -157,6 +157,30 @@
       var b=this;b.textContent='Saving…';b.disabled=true;
       var body={action:'listing',loc:loc,agentId:l.id,price:val('f_price'),beds:val('f_beds'),baths:val('f_baths'),sqft:val('f_sqft'),showing:val('f_showing'),details:val('f_details')};
       post('/api/update-listing',body,function(d){flash(d);b.textContent='Save changes';b.disabled=false;});
+    });
+  }
+  function connectNumber(i){
+    var l=D.listings[i]; if(!l) return;
+    var free=(D&&D.unassignedNumbers)||[];
+    if(!free.length){
+      openModal('<div class="m-h"><h3>Connect a number to '+esc(l.address)+'</h3><p>You don\'t have an unassigned phone number yet. Get one first, then come back and connect it to this listing.</p></div>'
+        +'<div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button><button class="cta" id="m_addnum">+ Add a phone number</button></div>');
+      document.getElementById('m_addnum').addEventListener('click',function(){var u=GHL+'/settings/phone_number';try{window.top.location.href=u;}catch(e){window.open(u,'_blank');}});
+      return;
+    }
+    var opts=free.map(function(n){return '<option value="'+esc(n)+'">'+esc(fmt(n))+'</option>';}).join('');
+    openModal('<div class="m-h"><h3>Connect a number to '+esc(l.address)+'</h3><p>Pick which of your phone numbers should ring this listing’s AI assistant, '+esc(l.agent)+'. Buyers who call it will reach '+esc(l.agent)+' about this property.</p></div>'
+      +'<div class="m-b"><div class="fld"><label>Phone number for this listing</label><select id="f_num">'+opts+'</select></div></div>'
+      +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" onclick="document.getElementById(\'ovl\').classList.remove(\'on\')">Close</button><button class="cta" id="m_conn">Connect this number</button></div>');
+    document.getElementById('m_conn').addEventListener('click',function(){
+      var b=this;b.textContent='Connecting…';b.disabled=true;
+      var num=val('f_num');
+      fetch(API+'/api/connect-number?loc='+encodeURIComponent(loc)+'&agentId='+encodeURIComponent(l.id)+'&number='+encodeURIComponent(num))
+        .then(function(r){return r.json();}).then(function(x){
+          flash({ok:x.ok,message:x.message});
+          if(x.ok){b.textContent='Connected!';setTimeout(function(){document.getElementById('ovl').classList.remove('on');load();},1000);}
+          else{b.textContent='Connect this number';b.disabled=false;}
+        }).catch(function(){flash({ok:false,message:'Network hiccup — try again.'});b.textContent='Connect this number';b.disabled=false;});
     });
   }
   function renameAgent(i){
@@ -279,8 +303,7 @@
       fetch(API+'/api/connect-number?loc='+encodeURIComponent(loc)).then(function(r){return r.json();}).then(function(x){b.textContent=x.assigned&&x.assigned.length?'Connected!':(x.already&&x.already.length?'Already connected!':'Buy your number first (Step 1)');b.disabled=false;load();});});
     var ab=document.getElementById('appBtn');
     if(ab)ab.addEventListener('click',function(){localStorage.setItem('ov_app_done','1');load();});
-    app.querySelectorAll('[data-connect]').forEach(function(e){e.addEventListener('click',function(){var b=this;b.textContent='Connecting…';b.disabled=true;
-      fetch(API+'/api/connect-number?loc='+encodeURIComponent(loc)+'&agentId='+encodeURIComponent(this.dataset.connect)).then(function(r){return r.json();}).then(function(x){b.textContent=(x.assigned&&x.assigned.length)?'Connected!':((x.already&&x.already.length)?'Already connected!':'Buy a number first');setTimeout(load,900);}).catch(function(){b.textContent='Try again';b.disabled=false;});});});
+    app.querySelectorAll('[data-connect]').forEach(function(e){e.addEventListener('click',function(){connectNumber(+this.dataset.connect);});});
     app.querySelectorAll('[data-edit]').forEach(function(e){e.addEventListener('click',function(){editListing(+this.dataset.edit);});});
     app.querySelectorAll('[data-rename]').forEach(function(e){e.addEventListener('click',function(){renameAgent(+this.dataset.rename);});});
     app.querySelectorAll('[data-mng]').forEach(function(e){e.addEventListener('click',function(){manage(this.dataset.mng, this.dataset.idx!=null?+this.dataset.idx:null);});});
