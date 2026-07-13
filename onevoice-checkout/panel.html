@@ -81,8 +81,16 @@
   .tbtn .tt{font-size:11px;font-weight:700;color:#3a4553}
   .tbtn .tp{font-size:13px;font-weight:800;margin:2px 0}
   .tbtn .tn{font-size:9.5px;font-weight:800;letter-spacing:.2px;color:var(--teal-d);text-transform:uppercase}
-  .cprow{display:flex;justify-content:space-between;gap:14px;padding:8px 0;border-bottom:1px solid #eef1f4}
-  .cprow b{text-align:right}
+  .cprow{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid #eef1f4}
+  .cprow>span{color:var(--mut);flex:0 0 auto;padding-top:1px}
+  .cprow b{text-align:right;font-weight:700}
+  .cprow .sub{font-size:11px;color:var(--mut);font-weight:600;margin-top:2px}
+  .cprow.tot{border-bottom:none;align-items:baseline}
+  .cprow.tot b{font-size:16px}
+  .cprow.tot .sub2{font-size:11px;color:var(--mut);font-weight:600}
+  .donewrap{text-align:center;padding:10px 6px 4px}
+  .donecheck{width:52px;height:52px;border-radius:50%;background:var(--ok);color:#fff;font-size:27px;font-weight:800;line-height:52px;margin:0 auto 12px}
+  .donemsg{font-size:14px;color:#2a3340;line-height:1.5}
   .fine{font-size:11.5px;color:var(--mut);margin:10px 0 0;line-height:1.45}
   /* compact the wide plan modal so it fits the dashboard widget with minimal scroll */
   .modal.wide .m-h{padding:12px 18px}
@@ -269,6 +277,8 @@
     pro:['AI Lead Analyzer — scores every caller so you call the hottest back first','Calendar-Synced Booking — Google, Outlook or Apple, around your real schedule','Lead Pipeline Dashboard — New → Contacted → Showing → Won, nothing slips','Answers texts, too — Ava handles inbound SMS like a call']
   };
   function fmtMo(c){return '$'+(c/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2})+'/mo';}
+  function money2(c){return '$'+(c/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function cadence(term){return term==='annual'?'per year':(term==='quarter'?'per 3 months':'per month');}
   function shortTerm(l){return String(l).replace(/\s*\(.*\)\s*/,'');} // "Every 3 months (save 25%)" -> "Every 3 months"
   function managePlan(){
     openModal('<div class="m-h"><h3>Manage my plan</h3><p>Loading your current plan…</p></div><div class="m-b"><div class="empty">One moment…</div></div>');
@@ -306,16 +316,35 @@
       : toPro
         ? 'Pro switches on right away — we’ll charge the prorated difference to your card on file now. After it applies, <b>refresh your dashboard</b> to see your Pro tools. Lead scoring &amp; the pipeline board are instant; text-answering and calendar sync finish within about an hour.'
         : 'We’ll charge the prorated difference to your card now and switch your billing right away.';
+    var newName=(cell.tier==='pro'?'Pro':'Basic')+' · '+shortTerm(cell.termLabel)+' · '+q.count+' listing'+(q.count>1?'s':'');
+    var dueToday=deferred?'$0 today':'Prorated difference';
     openModal('<div class="m-h"><h3>Confirm plan change</h3></div><div class="m-b">'
-      +'<div class="cprow"><span>From</span><b>'+esc(cur.label)+' ('+fmtMo(cur.perMonthCents)+')</b></div>'
-      +'<div class="cprow"><span>To</span><b>'+esc(cell.tier==='pro'?'Pro':'Basic')+' · '+esc(shortTerm(cell.termLabel))+' · '+q.count+' listing'+(q.count>1?'s':'')+' ('+fmtMo(cell.perMonthCents)+')</b></div>'
+      +'<div class="cprow"><span>From</span><b>'+esc(cur.label)+'<div class="sub">'+money2(cur.recurringCents)+' '+cadence(cur.term)+' · '+fmtMo(cur.perMonthCents)+'</div></b></div>'
+      +'<div class="cprow"><span>To</span><b>'+esc(newName)+'<div class="sub">'+fmtMo(cell.perMonthCents)+'</div></b></div>'
+      +'<div class="cprow tot"><span>New plan total</span><b>'+money2(cell.recurringCents)+' <span class="sub2">'+cadence(cell.term)+'</span></b></div>'
+      +'<div class="cprow tot"><span>Due today</span><b>'+dueToday+'</b></div>'
       +'<p class="fine">'+eff+'</p></div>'
       +'<div class="msg" id="m_msg"></div><div class="m-f"><button class="cta ghost" id="m_back2">← Back</button><button class="cta" id="m_apply">Confirm change</button></div>');
     document.getElementById('m_back2').addEventListener('click',function(){managePlan();});
     document.getElementById('m_apply').addEventListener('click',function(){
       var b=this;b.textContent='Applying…';b.disabled=true;
-      post('/api/change-plan',{loc:loc,tier:cell.tier,term:cell.term},function(d){flash(d);b.textContent='Confirm change';b.disabled=!!d.ok;if(d.ok)setTimeout(load,1800);});
+      post('/api/change-plan',{loc:loc,tier:cell.tier,term:cell.term},function(d){
+        if(d.ok){ showPlanDone(d); load(); }
+        else { flash(d); b.textContent='Confirm change'; b.disabled=false; }
+      });
     });
+  }
+  function showPlanDone(d){
+    var extra='';
+    if(d.deferred){
+      extra='<p class="fine" style="text-align:center">Nothing was charged today. Your card on file is billed at your next renewal'+(d.renewalHuman?' ('+esc(d.renewalHuman)+')':'')+'.</p>';
+    } else {
+      var amt=(d.chargedTodayCents!=null&&d.chargedTodayCents>0)?money2(d.chargedTodayCents):'';
+      extra=(amt?'<div class="cprow tot" style="justify-content:center;gap:10px;margin-top:6px"><span>Charged today</span><b>'+amt+'</b></div>':'')
+        +'<p class="fine" style="text-align:center">Billed to your card on file — no separate checkout needed. A receipt is emailed to you.</p>';
+    }
+    openModal('<div class="m-h"><h3>All set</h3></div><div class="m-b"><div class="donewrap"><div class="donecheck">✓</div><p class="donemsg">'+esc(d.message||'Your plan has been updated.')+'</p>'+extra+'</div></div>'
+      +'<div class="m-f"><button class="cta" onclick="document.getElementById(\'ovl\').classList.remove(\'on\');">Done</button></div>');
   }
   function manage(kind, idx){
     if(kind==='add'){addListing();return;}
