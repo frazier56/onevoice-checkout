@@ -82,7 +82,9 @@ function buildPrompt(mode, source) {
 You are OneApp's senior web designer (One World Labs). Produce ONE complete,
 single-file, production-quality HTML page (all CSS inline in one <style> tag,
 no external JS, Google Fonts allowed). Requirements:
-- Modern, clean, professional. Mobile-first, fast, accessible.
+- Modern, clean, professional. MOBILE-FIRST — most visitors are on phones, so the
+  single-column mobile layout must look great first, then scale up to desktop.
+- Fast and accessible; use responsive units, readable tap targets, no fixed widths.
 - Real content only — keep the business's actual name, services, phone,
   address, hours, testimonials. NEVER invent facts or use lorem ipsum.
 - Clear visual hierarchy: bold hero with the business's core promise, services

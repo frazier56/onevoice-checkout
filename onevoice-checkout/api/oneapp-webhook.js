@@ -83,11 +83,11 @@ function customerBuildHtml(o) {
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#1A2233;">
       <tr><td style="padding:4px 0;color:#5a6677;">Your website</td><td align="right" style="padding:4px 0;font-weight:700;">Built FREE — no setup fee</td></tr>
       <tr><td style="padding:4px 0;color:#5a6677;">Hosting &amp; security</td><td align="right" style="padding:4px 0;font-weight:600;">Fully managed, always on</td></tr>
-      <tr><td style="padding:4px 0;color:#5a6677;">Your domain</td><td align="right" style="padding:4px 0;font-weight:600;">We find it, buy it, manage it</td></tr>
-      <tr><td style="padding:4px 0;color:#5a6677;">Business email</td><td align="right" style="padding:4px 0;font-weight:600;">On your own domain</td></tr>
+      <tr><td style="padding:4px 0;color:#5a6677;">Web address</td><td align="right" style="padding:4px 0;font-weight:600;">Free yourbiz.oneapp.site — or connect your own</td></tr>
+      <tr><td style="padding:4px 0;color:#5a6677;">Business email</td><td align="right" style="padding:4px 0;font-weight:600;">Included</td></tr>
       ${featRow}
     </table>
-    <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Billed ${esc(o.priceBlurb)}. Cancel anytime — you simply won't be billed next month. Payments are non-refundable once a month starts. No hidden fees.</div>
+    <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Billed ${esc(o.priceBlurb)}. Cancel anytime after the minimum term. Payments are non-refundable once a term starts. A custom domain is bring-your-own (you buy &amp; own it; we connect and manage it). No hidden fees.</div>
   </td></tr></table></td></tr>
   <tr><td style="padding:16px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
     <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:8px;">Want more? Upgrade anytime</div>
@@ -204,7 +204,7 @@ export default async function handler(req, res) {
       tier,
       planLabel: info.label,
       price: info.price,
-      priceBlurb: info.blurb,
+      priceBlurb: (md.bill_note || info.blurb),
       options,
       isAddon: tier === 'addon',
       previewId: kv?.previewId || md.preview_id || '',

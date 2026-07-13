@@ -75,11 +75,26 @@ export default async function handler(req, res) {
     const origin = ALLOWED_ORIGINS.includes(req.headers.origin || '') ? req.headers.origin : ALLOWED_ORIGINS[1];
     const backTo = origin + '/oneapp.html';
 
+    // Billing term: add-ons bill monthly; Basic/Standard bill on a 3-month minimum
+    // (quarterly) by default, or annually at 25% off. Advertise the monthly price.
+    const monthly = p.cents;
+    let amount, recurring, billNote;
+    if (plan === 'addon') {
+      amount = monthly; recurring = { interval: 'month', interval_count: 1 };
+      billNote = '$29/month';
+    } else if ((req.body.term || '') === 'annual') {
+      amount = Math.round(monthly * 12 * 0.75); recurring = { interval: 'year', interval_count: 1 };
+      billNote = `$${(amount / 100).toFixed(0)}/year (12 months, 25% off)`;
+    } else {
+      amount = monthly * 3; recurring = { interval: 'month', interval_count: 3 };
+      billNote = `$${(amount / 100).toFixed(0)} every 3 months (3-month minimum)`;
+    }
+
     const summary = plan === 'addon'
       ? 'OneApp Add-on Services — $29/month to activate. This reserves your add-ons; we scope and quote the exact plan with you on a quick call. Cancel anytime.'
-      : `${p.name} — $${(p.cents/100).toFixed(0)}/month. Your website is FREE; this covers managed hosting, security, your domain (we find, buy & manage it), a business email on that domain` +
-        (optLabels.length ? `, and your chosen features (${optLabels.join(', ')})` : '') +
-        '. No setup fee. Cancel anytime — you simply won\'t be billed next month. Payments are non-refundable once a month starts. Your finished site is delivered within 24 hours.';
+      : `${p.name} — $${(monthly/100).toFixed(0)}/month, billed ${billNote}. Your website design is FREE; this covers managed hosting, security, and maintenance` +
+        (optLabels.length ? `, plus your features (${optLabels.join(', ')})` : '') +
+        '. You go live free on a yourbusiness.oneapp.site address; a custom domain is bring-your-own (you buy it, we connect & manage it). No setup fee. Cancel anytime after the minimum term. Payments are non-refundable once a term starts.';
 
     const successUrl = plan === 'addon'
       ? backTo + '?addon=1&session_id={CHECKOUT_SESSION_ID}'
@@ -92,15 +107,17 @@ export default async function handler(req, res) {
         quantity: 1,
         price_data: {
           currency: 'usd',
-          unit_amount: p.cents,
-          recurring: { interval: 'month', interval_count: 1 },
+          unit_amount: amount,
+          recurring,
           product_data: { name: p.name, description: p.desc },
         },
       }],
+      allow_promotion_codes: true,
       custom_text: { submit: { message: summary } },
       metadata: {
         product: 'oneapp',
         tier: plan,
+        bill_note: billNote.slice(0, 80),
         name: c.name, email: c.email, phone: c.phone, company: c.company,
         options: optLabels.join(', ').slice(0, 300),
         preview_id: String(previewId).slice(0, 24),
