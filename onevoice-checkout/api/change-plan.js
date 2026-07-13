@@ -143,9 +143,15 @@ export default async function handler(req, res) {
       product_data: { name: planName },
     });
     const sub = plan.sub;
+    const tierRank = { basic: 0, pro: 1 }, termRank = { monthly: 0, quarter: 1, annual: 2 };
+    const isDowngrade = tierRank[newTier] < tierRank[plan.tier]
+      || (newTier === plan.tier && termRank[newTerm] < termRank[plan.term]);
+    // UPGRADES apply now and charge the prorated difference immediately (always_invoice),
+    // so Pro benefits switch on right away. DOWNGRADES defer to renewal (no proration,
+    // nothing charged), so the customer keeps what they've already paid for until then.
     await stripe.subscriptions.update(plan.subId, {
       items: [{ id: sub.items.data[0].id, price: price.id }],
-      proration_behavior: 'none',
+      proration_behavior: isDowngrade ? 'none' : 'always_invoice',
       metadata: { ...(sub.metadata || {}), tier: newTier, term: newTerm },
     });
     // SECURITY (ledger #100): these endpoints are loc-gated with no per-tenant auth.
@@ -159,20 +165,20 @@ export default async function handler(req, res) {
       });
     } catch { /* alert is best-effort; billing change already applied */ }
 
-    // NOTE: Pro-only feature gating in GHL (scoring/calendar) is applied by the
-    // hideScoringForBasic path on new orders; a live tier switch should re-run it.
-    // Flagged as a follow-up (ledger #99) — billing change itself is complete here.
-    const tierRank = { basic: 0, pro: 1 }, termRank = { monthly: 0, quarter: 1, annual: 2 };
-    const isDowngrade = tierRank[newTier] < tierRank[plan.tier]
-      || (newTier === plan.tier && termRank[newTerm] < termRank[plan.term]);
+    // NOTE: Pro-only feature gating in GHL (scoring/calendar/pipeline/text) — a live
+    // tier switch should enable/disable those. Wired separately (ledger #99); the
+    // billing change itself is complete here.
     const periodEnd = plan.sub && plan.sub.current_period_end ? plan.sub.current_period_end : 0;
     const renewalHuman = periodEnd ? new Date(periodEnd * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'your renewal';
     const newName = newTier === 'pro' ? 'Pro' : 'Basic';
+    const toPro = newTier === 'pro' && plan.tier !== 'pro';
     const message = isDowngrade
-      ? `Done — you’ll switch to ${newName}, billed ${TERM[newTerm].label.toLowerCase()}, at your renewal on ${renewalHuman}. You keep everything you’ve already paid for until then; nothing was charged today.`
-      : `Done — you’re now on ${newName}, billed ${TERM[newTerm].label.toLowerCase()}. Your next invoice on ${renewalHuman} reflects the new price; nothing was charged today.`;
+      ? `Done — you’ll switch to ${newName}, billed ${TERM[newTerm].label.toLowerCase()}, at your renewal on ${renewalHuman}. You keep everything you’ve already paid for until then; nothing extra was charged today.`
+      : toPro
+        ? `You’re on Pro now — we charged the prorated difference to your card on file. Refresh your dashboard to see your Pro tools: lead scoring and the pipeline board are live right away; text-answering and calendar sync finish provisioning within about an hour.`
+        : `Done — you’re now billed ${TERM[newTerm].label.toLowerCase()}. We charged the prorated difference today and your plan updated right away.`;
     return res.status(200).json({
-      ok: true, newTier, newTerm, recurringCents: recurring, deferred: isDowngrade, renewalHuman, message,
+      ok: true, newTier, newTerm, recurringCents: recurring, deferred: isDowngrade, upgradedToPro: toPro, renewalHuman, message,
     });
   } catch (e) {
     return res.status(200).json({ ok: false, message: `Could not change your plan: ${e.message}` });
