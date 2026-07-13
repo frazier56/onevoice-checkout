@@ -168,6 +168,16 @@ export default async function handler(req, res) {
     // NOTE: Pro-only feature gating in GHL (scoring/calendar/pipeline/text) — a live
     // tier switch should enable/disable those. Wired separately (ledger #99); the
     // billing change itself is complete here.
+    // For upgrades (always_invoice), Stripe just created + charged a proration invoice.
+    // Fetch the exact amount so the UI can show "charged today: $X" on the receipt screen.
+    let chargedTodayCents = 0;
+    if (!isDowngrade) {
+      try {
+        const invs = await stripe.invoices.list({ customer: plan.customerId, subscription: plan.subId, limit: 1 });
+        const inv = (invs.data || [])[0];
+        if (inv) chargedTodayCents = (inv.amount_paid != null ? inv.amount_paid : (inv.amount_due || 0));
+      } catch { /* best-effort; success screen falls back to generic copy */ }
+    }
     const periodEnd = plan.sub && plan.sub.current_period_end ? plan.sub.current_period_end : 0;
     const renewalHuman = periodEnd ? new Date(periodEnd * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'your renewal';
     const newName = newTier === 'pro' ? 'Pro' : 'Basic';
@@ -178,7 +188,8 @@ export default async function handler(req, res) {
         ? `You’re on Pro now — we charged the prorated difference to your card on file. Refresh your dashboard to see your Pro tools: lead scoring and the pipeline board are live right away; text-answering and calendar sync finish provisioning within about an hour.`
         : `Done — you’re now billed ${TERM[newTerm].label.toLowerCase()}. We charged the prorated difference today and your plan updated right away.`;
     return res.status(200).json({
-      ok: true, newTier, newTerm, recurringCents: recurring, deferred: isDowngrade, upgradedToPro: toPro, renewalHuman, message,
+      ok: true, newTier, newTerm, recurringCents: recurring, deferred: isDowngrade, upgradedToPro: toPro,
+      chargedTodayCents, renewalHuman, message,
     });
   } catch (e) {
     return res.status(200).json({ ok: false, message: `Could not change your plan: ${e.message}` });
