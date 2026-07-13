@@ -1,18 +1,17 @@
 /* =============================================================================
    OneApp — Stripe webhook (SEPARATE endpoint)  ·  POST /api/oneapp-webhook
    -----------------------------------------------------------------------------
-   Register as its OWN Stripe webhook endpoint subscribed to:
-     - checkout.session.completed   (only acts when metadata.product === 'oneapp')
-   On a paid OneApp order it:
-     1) reads the full order from KV (oa:order:<session_id>)
-     2) upserts the customer as a GHL contact (tag: oneapp-customer)
-     3) emails the customer: "your site will be delivered within 24 hours"
-     4) emails the founder an ACTION-NEEDED build sheet (source URL, preview
-        link, freebie, notes, contact) + drops a card in the New Orders pipeline
-   FULFILL-FIRST (lesson from Jul 8: a timeout must never eat the email).
-   ENV: STRIPE_SECRET_KEY, STRIPE_ONEAPP_WEBHOOK_SECRET,
-        GHL_LOCATION_TOKEN (or GHL_AGENCY_TOKEN), GHL_ORDERS_LOCATION_ID,
-        GHL_ORDERS_PIPELINE_NAME, GHL_EMAIL_FROM, GHL_FOUNDER_EMAIL.
+   Subscribed to checkout.session.completed (acts only when metadata.product==='oneapp').
+   TIER-AWARE (Jul 12 2026 model):
+     basic  ($97/mo)  · standard ($197/mo, 2 chosen features) → BUILD order (24h)
+     addon  ($29/mo)                                          → CALL-TO-SCOPE request
+   Basic/Standard → upsert GHL contact (tag oneapp-customer), email "delivered
+   within 24h" (tier-correct price + chosen features), founder build sheet, New
+   Orders pipeline card. Addon → email "we'll call you to scope", founder request
+   sheet. FULFILL-FIRST so a timeout never eats the email.
+   ENV: STRIPE_SECRET_KEY, STRIPE_ONEAPP_WEBHOOK_SECRET, GHL_LOCATION_TOKEN
+        (or GHL_AGENCY_TOKEN), GHL_ORDERS_LOCATION_ID, GHL_ORDERS_PIPELINE_NAME,
+        GHL_EMAIL_FROM, GHL_FOUNDER_EMAIL.
    ============================================================================= */
 
 import Stripe from 'stripe';
@@ -31,7 +30,11 @@ const FOUNDER_EMAIL = process.env.GHL_FOUNDER_EMAIL || 'founder@onesocial.ai';
 const SUPPORT_EMAIL = 'contact@oneworldlabs.inc';
 const BASE_URL = 'https://onevoice-checkout.vercel.app';
 
-const FREEBIES = { form: 'Smart contact form', seo: 'Basic SEO setup', chatbot: 'AI chatbot' };
+const PLAN_INFO = {
+  basic:    { label: 'OneApp Basic',           price: 97,  blurb: '$97/month' },
+  standard: { label: 'OneApp Standard',        price: 197, blurb: '$197/month' },
+  addon:    { label: 'OneApp Add-on Services', price: 29,  blurb: '$29/month' },
+};
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
@@ -64,55 +67,80 @@ function emailWrap(inner) {
   </table></td></tr></table>`;
 }
 
-function customerHtml(o) {
+/* ---- Basic / Standard: "your site is being built" ---- */
+function customerBuildHtml(o) {
   const previewLink = o.previewId ? `${BASE_URL}/api/oneapp-preview?id=${esc(o.previewId)}` : '';
+  const featRow = o.options.length
+    ? `<tr><td style="padding:4px 0;color:#5a6677;">Your features</td><td align="right" style="padding:4px 0;font-weight:700;">${esc(o.options.join(', '))}</td></tr>`
+    : '';
   const inner = `<tr><td style="padding:30px 22px 6px;">
     <h1 style="font-size:23px;font-weight:800;color:#0B0F1A;margin:0 0 10px;">You're in, ${esc(o.firstName)} — your new site is being built.</h1>
     <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Our team is finishing your website right now. <b>Your completed site will land in this inbox within 24 hours</b> — usually much sooner — with your new address and login details.</p>
     ${previewLink ? `<p style="font-size:14px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Want another look at the design you picked? <a href="${previewLink}" style="color:#0B8C80;font-weight:700;">View your preview →</a></p>` : ''}
   </td></tr>
   <tr><td style="padding:6px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fbfaf6;border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
-    <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:10px;">What your plan covers — $199/mo, billed $597 every 4 months (4th month FREE)</div>
+    <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:10px;">Your plan — ${esc(o.planLabel)}, ${esc(o.priceBlurb)}</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#1A2233;">
       <tr><td style="padding:4px 0;color:#5a6677;">Your website</td><td align="right" style="padding:4px 0;font-weight:700;">Built FREE — no setup fee</td></tr>
       <tr><td style="padding:4px 0;color:#5a6677;">Hosting &amp; security</td><td align="right" style="padding:4px 0;font-weight:600;">Fully managed, always on</td></tr>
       <tr><td style="padding:4px 0;color:#5a6677;">Your domain</td><td align="right" style="padding:4px 0;font-weight:600;">We find it, buy it, manage it</td></tr>
       <tr><td style="padding:4px 0;color:#5a6677;">Business email</td><td align="right" style="padding:4px 0;font-weight:600;">On your own domain</td></tr>
-      <tr><td style="padding:4px 0;color:#5a6677;">Your free add-on</td><td align="right" style="padding:4px 0;font-weight:700;">${esc(o.freebieLabel)}</td></tr>
+      ${featRow}
     </table>
-    <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Billed $597 every 4 months — three months’ price, 4th month FREE. Cancel anytime — you simply won't be billed again. Payments are non-refundable once a period starts. No hidden fees.</div>
+    <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Billed ${esc(o.priceBlurb)}. Cancel anytime — you simply won't be billed next month. Payments are non-refundable once a month starts. No hidden fees.</div>
   </td></tr></table></td></tr>
   <tr><td style="padding:16px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
     <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:8px;">Want more? Upgrade anytime</div>
-    <p style="font-size:13.5px;line-height:1.7;color:#3d4753;margin:0;">Google Business Profile &amp; Maps, Google review management, online booking &amp; scheduling, an enhanced AI chatbot, full search-engine optimization, social media content — and more. Just reply to this email with what you want and our team will <b>call you back with a custom quote</b>.</p>
+    <p style="font-size:13.5px;line-height:1.7;color:#3d4753;margin:0;">Google Business Profile &amp; Maps, review management, online booking, an enhanced AI chatbot, full SEO, social media content — and more. Just reply to this email with what you want and our team will <b>call you back with a custom quote</b>.</p>
   </td></tr></table></td></tr>
   ${o.notes ? `<tr><td style="padding:14px 22px 4px;"><p style="font-size:13.5px;line-height:1.6;color:#5a6677;margin:0;"><b style="color:#1A2233;">Your requests we captured:</b> ${esc(o.notes)}</p></td></tr>` : ''}
   ${process.env.ONEAPP_PORTAL_URL ? `<tr><td style="padding:12px 22px 4px;"><p style="font-size:12.5px;color:#8a93a3;margin:0;">View or manage your billing anytime: <a href="${esc(process.env.ONEAPP_PORTAL_URL)}" style="color:#0B8C80;font-weight:700;">customer billing portal</a>.</p></td></tr>` : ''}`;
   return emailWrap(inner);
 }
 
+/* ---- Add-on: "we'll call you to scope it" ---- */
+function customerAddonHtml(o) {
+  const inner = `<tr><td style="padding:30px 22px 8px;">
+    <h1 style="font-size:23px;font-weight:800;color:#0B0F1A;margin:0 0 10px;">Got it, ${esc(o.firstName)} — let's map out your add-ons.</h1>
+    <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Your add-on services are reserved at <b>$29/month</b> and a member of our team will <b>call you within 1 business day</b> to scope exactly what you want and give you a straight quote — we only build what you approve.</p>
+    <p style="font-size:14px;line-height:1.7;color:#3d4753;margin:0;"><b>You're interested in:</b> ${esc(o.options.join(', ') || 'a custom add-on')}${o.notes ? `<br><b>Your notes:</b> ${esc(o.notes)}` : ''}</p>
+  </td></tr>`;
+  return emailWrap(inner);
+}
+
 function founderHtml(o, sessionId) {
   const previewLink = o.previewId ? `${BASE_URL}/api/oneapp-preview?id=${esc(o.previewId)}` : '(none — from-scratch flow?)';
+  if (o.isAddon) {
+    return `<div style="font-family:-apple-system,'Segoe UI',Arial,sans-serif;font-size:14px;color:#1A2233;line-height:1.7;padding:8px;">
+      <b>ONEAPP ADD-ON — call to scope (within 1 business day)</b><br><br>
+      Customer: ${esc(o.name)} (${esc(o.email)}, ${esc(o.phone) || 'no phone'})<br>
+      Company: ${esc(o.company) || '—'}<br>
+      Wants: <b>${esc(o.options.join(', ') || 'custom add-on')}</b><br>
+      Notes: ${esc(o.notes) || '—'}<br><br>
+      $29/month card on file (session ${esc(sessionId)}). Book the call, scope, quote the rest.
+    </div>`;
+  }
   return `<div style="font-family:-apple-system,'Segoe UI',Arial,sans-serif;font-size:14px;color:#1A2233;line-height:1.7;padding:8px;">
-    <b>NEW ONEAPP ORDER — build due within 24h</b><br><br>
+    <b>NEW ONEAPP ORDER (${esc(o.planLabel)}) — build due within 24h</b><br><br>
     Customer: ${esc(o.name)} (${esc(o.email)}, ${esc(o.phone) || 'no phone'})<br>
     Company: ${esc(o.company) || '—'}<br>
+    Plan: <b>${esc(o.planLabel)} — ${esc(o.priceBlurb)}</b><br>
+    Chosen features: <b>${esc(o.options.join(', ') || '— (Basic: none)')}</b><br>
     Old site: ${o.sourceUrl ? `<a href="${esc(o.sourceUrl)}">${esc(o.sourceUrl)}</a>` : 'NONE — built from scratch'}<br>
     Approved preview: ${o.previewId ? `<a href="${previewLink}">${previewLink}</a>` : previewLink}<br>
-    Free add-on: <b>${esc(o.freebieLabel)}</b><br>
     Customer notes: ${esc(o.notes) || '—'}<br><br>
-    <b>To do:</b> register domain, deploy site from preview (apply notes), set up
-    domain email, wire the free add-on, send hand-off email.<br>
-    Stripe session: ${esc(sessionId)} · $597-per-4-months (4th free) subscription active (preview TTL extended to 60 days on payment).
+    <b>To do:</b> register domain, deploy site from preview (apply notes + features), set up
+    domain email, send hand-off email.<br>
+    Stripe session: ${esc(sessionId)} · ${esc(o.priceBlurb)} subscription active (preview TTL extended to 60 days on payment).
   </div>`;
 }
 
-async function upsertContact(o) {
+async function upsertContact(o, tag) {
   const r = await ghl('POST', '/contacts/upsert', {
     locationId: ORDERS_LOCATION_ID, email: o.email,
     firstName: o.firstName, lastName: o.lastName, name: o.name,
     phone: o.phone || '', companyName: o.company || '',
-    source: 'OneApp checkout', tags: ['oneapp-customer'],
+    source: 'OneApp checkout', tags: [tag],
   });
   return r.data?.contact?.id || r.data?.id || '';
 }
@@ -130,10 +158,12 @@ async function pipelineCard(contactId, o) {
   const p = ps.find(x => (x.name || '').toLowerCase().includes(ORDERS_PIPELINE_NAME.toLowerCase())) || ps[0];
   if (!p) return { ok: false };
   const stages = (p.stages || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
+  const title = o.isAddon
+    ? `OneApp Add-on: ${o.company || o.name} — $29/mo (call to scope)`
+    : `OneApp ${o.planLabel.replace('OneApp ', '')}: ${o.company || o.name} — ${o.priceBlurb} (build 24h)`;
   return ghl('POST', '/opportunities/', {
     pipelineId: p.id, locationId: ORDERS_LOCATION_ID, pipelineStageId: stages[0]?.id || '',
-    name: `OneApp: ${o.company || o.name} — $597/4mo (build due 24h)`,
-    status: 'open', contactId, monetaryValue: 597,
+    name: title, status: 'open', contactId, monetaryValue: o.price,
   });
 }
 
@@ -155,9 +185,14 @@ export default async function handler(req, res) {
 
   const out = { contact: null, customerEmail: null, founderEmail: null, card: null };
   try {
-    // KV first (full notes), metadata fallback
     let kv = null; try { kv = await kvGet('oa:order:' + session.id); } catch { kv = null; }
+    const tier = (kv?.tier || md.tier || 'basic');
+    const info = PLAN_INFO[tier] || PLAN_INFO.basic;
     const name = (kv?.contact?.name || md.name || '').trim();
+    // options: from KV labels, else the comma string in metadata
+    let options = Array.isArray(kv?.optionLabels) ? kv.optionLabels : [];
+    if (!options.length && md.options) options = String(md.options).split(',').map(s => s.trim()).filter(Boolean);
+
     const o = {
       name,
       firstName: name.split(' ')[0] || 'friend',
@@ -165,38 +200,48 @@ export default async function handler(req, res) {
       email: kv?.contact?.email || md.email || session.customer_details?.email || '',
       phone: kv?.contact?.phone || md.phone || '',
       company: kv?.contact?.company || md.company || '',
-      freebieLabel: FREEBIES[kv?.freebie || md.freebie] || FREEBIES.form,
+      tier,
+      planLabel: info.label,
+      price: info.price,
+      priceBlurb: info.blurb,
+      options,
+      isAddon: tier === 'addon',
       previewId: kv?.previewId || md.preview_id || '',
       sourceUrl: kv?.sourceUrl || md.source_url || '',
       notes: kv?.notes || md.notes || '',
     };
 
-    // PAID order → extend the 48h preview so the build team never loses the
-    // approved design (re-save with 60-day TTL). Best-effort.
-    if (o.previewId) {
+    // Paid build order → extend the 48h preview to 60d so the design isn't lost.
+    if (!o.isAddon && o.previewId) {
       try {
         const prev = await kvGet('oa:prev:' + o.previewId);
         if (prev) await kvSet('oa:prev:' + o.previewId, prev, { ttlSeconds: 60 * 24 * 3600 });
       } catch { /* soft-fail */ }
     }
 
-    const contactId = await upsertContact(o);
+    const contactId = await upsertContact(o, o.isAddon ? 'oneapp-addon-request' : 'oneapp-customer');
     out.contact = contactId || 'FAILED';
     if (contactId) {
-      out.customerEmail = await sendEmail(contactId, `Your new website is on the way, ${o.firstName} — delivered within 24 hours`, customerHtml(o));
+      const subject = o.isAddon
+        ? `We got your add-on request, ${o.firstName} — expect our call`
+        : `Your new website is on the way, ${o.firstName} — delivered within 24 hours`;
+      out.customerEmail = await sendEmail(contactId, subject, o.isAddon ? customerAddonHtml(o) : customerBuildHtml(o));
       out.card = await pipelineCard(contactId, o);
     }
 
-    // founder build sheet (own contact so it never depends on the customer leg)
     const fId = await (async () => {
       const r = await ghl('POST', '/contacts/upsert', { locationId: ORDERS_LOCATION_ID, email: FOUNDER_EMAIL, firstName: 'Lee', lastName: 'Frazier', name: 'Lee Frazier', source: 'OneApp system alerts', tags: ['onevoice-founder-alert'] });
       return r.data?.contact?.id || r.data?.id || '';
     })();
-    if (fId) out.founderEmail = await sendEmail(fId, `NEW ONEAPP ORDER: ${o.company || o.name} — build due 24h`, founderHtml(o, session.id));
+    if (fId) {
+      const fSubject = o.isAddon
+        ? `OneApp ADD-ON request: ${o.company || o.name} — call to scope`
+        : `NEW ONEAPP ORDER (${o.planLabel}): ${o.company || o.name} — build due 24h`;
+      out.founderEmail = await sendEmail(fId, fSubject, founderHtml(o, session.id));
+    }
   } catch (e) {
     out.error = e.message;
   }
 
-  // Always 200 — fulfillment already ran; Stripe must not retry into dup emails.
   return res.status(200).json({ received: true, ...out });
 }

@@ -5,7 +5,7 @@
      { mode:'url', url:'https://…' }          → fetch their site, redesign it
      { mode:'new', brief:{ name, industry, city, description } } → build fresh
    Calls the Anthropic API, stores the finished single-file HTML in KV
-   (oa:prev:<id>, 48-hour TTL) and returns { id, changes:[…], previewPath }.
+   (oa:prev:<id>, 14-day TTL) and returns { id, changes:[…], previewPath }.
    Rate-limited: 3 builds per IP per day (oa:rl:<ip>).
    ENV: ANTHROPIC_API_KEY  (+ optional ANTHROPIC_MODEL, default claude-sonnet-5)
    NOTE maxDuration 300 needs Fluid Compute (default on new Vercel projects).
@@ -24,6 +24,8 @@ const ALLOWED_ORIGINS = [
   'https://www.oneworldlabs.ai',
   'https://frazier56.github.io',
 ];
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 function cors(req, res) {
   const o = req.headers.origin || '';
@@ -153,7 +155,14 @@ export default async function handler(req, res) {
       await kvSet(rlKey, Number(used) + 1, { ttlSeconds: 86400 });
     } catch { /* soft-fail */ }
 
-    const { mode = 'url', url = '', brief = {} } = req.body || {};
+    const { mode = 'url', url = '', brief = {}, email = '' } = req.body || {};
+
+    // --- email gate: required before we spend an AI build (bot filter + lead capture) ---
+    const leadEmail = String(email || '').trim().slice(0, 160);
+    if (!EMAIL_RE.test(leadEmail)) {
+      return res.status(400).json({ error: 'Please enter a valid email so we can save your preview.' });
+    }
+
     let prompt, sourceUrl = '';
 
     if (mode === 'url') {
@@ -183,9 +192,16 @@ export default async function handler(req, res) {
     if (html.length < 500) throw new Error('The AI build came back too short — please try again.');
 
     const id = rid();
-    const rec = { html, changes, sourceUrl, mode, createdAt: new Date().toISOString() };
+    const rec = { html, changes, sourceUrl, mode, email: leadEmail, createdAt: new Date().toISOString() };
     const saved = await kvSet('oa:prev:' + id, rec, { ttlSeconds: 48 * 3600 }); // previews live 48h
     if (!saved.ok) return res.status(500).json({ error: 'Could not save your preview — please try again.' });
+
+    // best-effort lead capture (even if they never buy → a callable lead). 60-day TTL.
+    try {
+      await kvSet('oa:lead:' + leadEmail.toLowerCase(), {
+        email: leadEmail, mode, sourceUrl, previewId: id, lastBuildAt: new Date().toISOString(),
+      }, { ttlSeconds: 60 * 24 * 3600 });
+    } catch { /* soft-fail */ }
 
     return res.status(200).json({ id, changes, previewPath: '/api/oneapp-preview?id=' + id });
   } catch (err) {
