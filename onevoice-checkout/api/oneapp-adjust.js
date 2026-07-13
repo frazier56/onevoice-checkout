@@ -28,7 +28,7 @@ const V_CONV = '2021-04-15';
 const ORDERS_LOCATION_ID = process.env.GHL_ORDERS_LOCATION_ID || 'VkZwS3nGWMX06NRwLxJ8';
 const LOCATION_TOKEN = process.env.GHL_LOCATION_TOKEN || process.env.GHL_AGENCY_TOKEN;
 const FOUNDER_EMAIL = process.env.GHL_FOUNDER_EMAIL || 'founder@onesocial.ai';
-const SUPPORT_EMAIL = 'contact@oneworldlabs.inc';
+const SUPPORT_EMAIL = 'contact@oneworldlabs.ai';
 
 async function ghl(method, path, body, version = V_MAIN) {
   const r = await fetch(`${GHL_BASE}${path}`, {
@@ -53,8 +53,8 @@ function upgradeEmailHtml(firstName, label, oldQ, newQ, nextDate) {
     </td></tr>
     <tr><td style="padding:6px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fbfaf6;border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#1A2233;">
-        <tr><td style="padding:4px 0;color:#5a6677;">Previous</td><td align="right" style="padding:4px 0;">${usd(oldQ)} every 4 months (4th free)</td></tr>
-        <tr><td style="padding:4px 0;color:#5a6677;">New plan</td><td align="right" style="padding:4px 0;font-weight:800;">${usd(newQ)} every 4 months (4th free) (${usd(Math.round(newQ / 3))}/mo)</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6677;">Previous</td><td align="right" style="padding:4px 0;">${usd(oldQ)} every 3 months</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6677;">New plan</td><td align="right" style="padding:4px 0;font-weight:800;">${usd(newQ)} every 3 months (${usd(Math.round(newQ / 3))}/mo)</td></tr>
         <tr><td style="padding:4px 0;color:#5a6677;">Starts</td><td align="right" style="padding:4px 0;font-weight:600;">${esc(nextDate)}</td></tr>
       </table>
       <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Same terms as always: cancel anytime and you won't be billed again.</div>
@@ -108,14 +108,14 @@ export default async function handler(req, res) {
     // LIST mode
     if (!q.apply) {
       return res.status(200).json({
-        found: subs.map(s => ({ subscription: s.subId, current: usd(s.quarterCents) + ' / 4 months (' + usd(Math.round(s.quarterCents / 3)) + '/mo)', nextBill: s.nextBill })),
+        found: subs.map(s => ({ subscription: s.subId, current: usd(s.quarterCents) + ' / 3 months (' + usd(Math.round(s.quarterCents / 3)) + '/mo)', nextBill: s.nextBill })),
         howToApply: `add &monthly=<new $/mo>&label=<plan name>&apply=1`,
       });
     }
 
     // APPLY mode
     const monthly = Number(q.monthly);
-    if (!monthly || monthly < 50 || monthly > 10000) return res.status(400).json({ error: '&monthly= must be new per-month dollars (50-10000), e.g. monthly=799' });
+    if (!monthly || monthly < 50 || monthly > 10000) return res.status(400).json({ error: '&monthly= must be new per-month dollars (50–10000), e.g. monthly=799' });
     const label = String(q.label || 'Upgraded plan').slice(0, 80);
     const target = subs[0];
     const newQuarterCents = Math.round(monthly * 100 * 3);
@@ -127,7 +127,7 @@ export default async function handler(req, res) {
           currency: 'usd',
           product_data: { name: `OneApp Managed Hosting — ${label}` },
           unit_amount: newQuarterCents,
-          recurring: { interval: 'month', interval_count: 4 },
+          recurring: { interval: 'month', interval_count: 3 },
         },
       }],
       proration_behavior: 'none',

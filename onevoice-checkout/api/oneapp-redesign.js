@@ -149,9 +149,10 @@ export default async function handler(req, res) {
     // --- rate limit: 3/day per IP (best-effort; KV outage never blocks) ---
     const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
     const rlKey = 'oa:rl:' + ip;
+    const RL_MAX = Number(process.env.OA_RATELIMIT_MAX || 50); // raised for testing; tune via env for launch
     try {
       const used = (await kvGet(rlKey)) || 0;
-      if (Number(used) >= 3) return res.status(429).json({ error: 'You have hit today\'s free-preview limit (3). Email contact@oneworldlabs.inc and we\'ll build it for you.' });
+      if (Number(used) >= RL_MAX) return res.status(429).json({ error: 'You have hit today\'s free-preview limit. Email contact@oneworldlabs.ai and we\'ll build it for you.' });
       await kvSet(rlKey, Number(used) + 1, { ttlSeconds: 86400 });
     } catch { /* soft-fail */ }
 

@@ -27,7 +27,7 @@ const ORDERS_LOCATION_ID = process.env.GHL_ORDERS_LOCATION_ID || 'VkZwS3nGWMX06N
 const ORDERS_PIPELINE_NAME = process.env.GHL_ORDERS_PIPELINE_NAME || 'New Orders';
 const LOCATION_TOKEN = process.env.GHL_LOCATION_TOKEN || process.env.GHL_AGENCY_TOKEN;
 const FOUNDER_EMAIL = process.env.GHL_FOUNDER_EMAIL || 'founder@onesocial.ai';
-const SUPPORT_EMAIL = 'contact@oneworldlabs.inc';
+const SUPPORT_EMAIL = 'contact@oneworldlabs.ai';
 const BASE_URL = 'https://onevoice-checkout.vercel.app';
 
 const PLAN_INFO = {
@@ -192,6 +192,7 @@ export default async function handler(req, res) {
     // options: from KV labels, else the comma string in metadata
     let options = Array.isArray(kv?.optionLabels) ? kv.optionLabels : [];
     if (!options.length && md.options) options = String(md.options).split(',').map(s => s.trim()).filter(Boolean);
+    if (tier === 'standard' && !options.length) options = ['Contact form', 'Photo & text edits'];
 
     const o = {
       name,

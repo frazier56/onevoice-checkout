@@ -20,7 +20,7 @@ const GONE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
 <body style="margin:0;background:#FAFAF8;font-family:Inter,-apple-system,'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;color:#111827;">
 <div style="padding:32px;"><div style="font-size:26px;font-weight:800;"><span style="color:#0d9488;">One</span>App</div>
 <p style="margin-top:14px;font-size:15px;color:#6b7280;max-width:26rem;">This preview has expired — free previews live for 48 hours.
-Head back and rebuild it free in about a minute — or email <a href="mailto:contact@oneworldlabs.inc" style="color:#0d9488;font-weight:700;">contact@oneworldlabs.inc</a>.</p></div>
+Head back and rebuild it free in about a minute — or email <a href="mailto:contact@oneworldlabs.ai" style="color:#0d9488;font-weight:700;">contact@oneworldlabs.ai</a>.</p></div>
 </body></html>`;
 
 export default async function handler(req, res) {

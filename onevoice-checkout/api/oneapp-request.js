@@ -16,7 +16,7 @@ const V_CONV = '2021-04-15';
 const ORDERS_LOCATION_ID = process.env.GHL_ORDERS_LOCATION_ID || 'VkZwS3nGWMX06NRwLxJ8';
 const LOCATION_TOKEN = process.env.GHL_LOCATION_TOKEN || process.env.GHL_AGENCY_TOKEN;
 const FOUNDER_EMAIL = process.env.GHL_FOUNDER_EMAIL || 'founder@onesocial.ai';
-const SUPPORT_EMAIL = 'contact@oneworldlabs.inc';
+const SUPPORT_EMAIL = 'contact@oneworldlabs.ai';
 
 const ALLOWED_ORIGINS = [
   'https://onevoice.onesocial.ai',

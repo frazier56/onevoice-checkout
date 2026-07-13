@@ -28,9 +28,9 @@ const PLANS = {
 
 // friendly labels for metadata / emails
 const OPT_LABELS = {
-  form: 'Smart contact form', chatbot: 'AI chat widget', edits: 'Photo & text edits',
+  form: 'Smart contact form', chatbot: 'AI chat widget', chat: 'AI chat widget', edits: 'Photo & text edits',
   seo: 'SEO', gbp: 'Google Business & Maps', reviews: 'Review management',
-  booking: 'Online booking', voice: 'OneVoice AI answering', app: 'Mobile app',
+  booking: 'Online booking & appointments', voice: 'OneVoice AI answering', app: 'Mobile app',
   dashboard: 'Full CRM dashboard', social: 'Social media content',
 };
 
@@ -67,12 +67,10 @@ export default async function handler(req, res) {
     };
     if (!c.name || !c.email) return res.status(400).json({ error: 'Please add your name and email so we can reach you.' });
 
-    // normalize option keys → labels
+    // normalize option keys → labels (Standard now includes form+photo+text by default; add-ons carry their picks)
     const optKeys = Array.isArray(options) ? options.filter(k => OPT_LABELS[k]).slice(0, 8) : [];
-    if (plan === 'standard' && optKeys.length !== 2) {
-      return res.status(400).json({ error: 'Standard includes 2 features — please choose exactly 2.' });
-    }
-    const optLabels = optKeys.map(k => OPT_LABELS[k]);
+    let optLabels = optKeys.map(k => OPT_LABELS[k]);
+    if (plan === 'standard' && !optLabels.length) optLabels = ['Contact form', 'Photo & text edits'];
 
     const origin = ALLOWED_ORIGINS.includes(req.headers.origin || '') ? req.headers.origin : ALLOWED_ORIGINS[1];
     const backTo = origin + '/oneapp.html';
