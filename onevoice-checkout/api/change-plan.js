@@ -76,39 +76,54 @@ export default async function handler(req, res) {
   const n = plan.count;
 
   if (isGet) {
-    const options = [];
-    // the ONE tier move available (upgrade if Basic, downgrade if Pro), keeping current term
-    const otherTier = plan.tier === 'pro' ? 'basic' : 'pro';
-    options.push({
-      key: 'tier', kind: plan.tier === 'pro' ? 'downgrade' : 'upgrade',
-      tier: otherTier, term: plan.term,
-      label: plan.tier === 'pro' ? 'Switch to Basic' : 'Upgrade to Pro',
-      recurringCents: recurringFor(otherTier, plan.term, n),
-      perMonthCents: perMonthFor(otherTier, plan.term, n),
-      note: plan.tier === 'pro'
-        ? 'Keeps everything except Pro-only extras (lead scoring, calendar booking).'
-        : 'Adds lead scoring, calendar booking, and Pro call handling.',
-    });
-    // term moves (same tier), only the ones that differ from current
-    for (const tk of ['monthly', 'quarter', 'annual']) {
-      if (tk === plan.term) continue;
-      options.push({
-        key: 'term', kind: 'term', tier: plan.tier, term: tk,
-        label: 'Billing: ' + TERM[tk].label,
-        recurringCents: recurringFor(plan.tier, tk, n),
-        perMonthCents: perMonthFor(plan.tier, tk, n),
-        note: tk === 'monthly' ? 'Pay month to month.' : 'Prepay and save — same plan.',
-      });
-    }
+    // Direction of a move relative to the current plan, so the UI can frame it as
+    // an upgrade (charge/features up), a downgrade (deferred to renewal), or a
+    // billing/prepay change on the same plan.
+    const tierRank = { basic: 0, pro: 1 };
+    const termRank = { monthly: 0, quarter: 1, annual: 2 };
+    const direction = (toTier, toTerm) => {
+      if (toTier === plan.tier && toTerm === plan.term) return 'current';
+      if (tierRank[toTier] > tierRank[plan.tier]) return 'upgrade';     // Basic -> Pro
+      if (tierRank[toTier] < tierRank[plan.tier]) return 'downgrade';   // Pro -> Basic (at renewal)
+      return termRank[toTerm] > termRank[plan.term] ? 'save' : 'shorten'; // same tier, longer/shorter term
+    };
+    // Renewal date = when the current paid period ends. Any change bills from here;
+    // downgrades/shorter terms simply take effect then, so prepaid time is honored.
+    const periodEnd = plan.sub && plan.sub.current_period_end ? plan.sub.current_period_end : 0;
+    const renewalHuman = periodEnd
+      ? new Date(periodEnd * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : '';
+
+    const buildTerms = (tier) => {
+      const terms = {};
+      for (const tk of ['monthly', 'quarter', 'annual']) {
+        terms[tk] = {
+          tier, term: tk, termLabel: TERM[tk].label,
+          recurringCents: recurringFor(tier, tk, n),
+          perMonthCents: perMonthFor(tier, tk, n),
+          savePct: Math.round(TERM[tk].off * 100),
+          current: tier === plan.tier && tk === plan.term,
+          direction: direction(tier, tk),
+        };
+      }
+      return terms;
+    };
+
     return res.status(200).json({
       ok: true, tier: plan.tier, term: plan.term, count: n,
+      renewalDate: periodEnd, renewalHuman,
       current: {
         tier: plan.tier, term: plan.term,
+        tierName: plan.tier === 'pro' ? 'Pro' : 'Basic',
+        termLabel: TERM[plan.term].label,
         label: `${plan.tier === 'pro' ? 'Pro' : 'Basic'} · ${TERM[plan.term].label} · ${n} listing${n > 1 ? 's' : ''}`,
         recurringCents: recurringFor(plan.tier, plan.term, n),
         perMonthCents: perMonthFor(plan.tier, plan.term, n),
       },
-      options,
+      plans: {
+        basic: { name: 'Basic', tagline: 'Everything you need to stop missing calls.', terms: buildTerms('basic') },
+        pro: { name: 'Pro', tagline: 'For agents who want their AI to do the sorting.', terms: buildTerms('pro') },
+      },
     });
   }
 
@@ -147,9 +162,17 @@ export default async function handler(req, res) {
     // NOTE: Pro-only feature gating in GHL (scoring/calendar) is applied by the
     // hideScoringForBasic path on new orders; a live tier switch should re-run it.
     // Flagged as a follow-up (ledger #99) — billing change itself is complete here.
+    const tierRank = { basic: 0, pro: 1 }, termRank = { monthly: 0, quarter: 1, annual: 2 };
+    const isDowngrade = tierRank[newTier] < tierRank[plan.tier]
+      || (newTier === plan.tier && termRank[newTerm] < termRank[plan.term]);
+    const periodEnd = plan.sub && plan.sub.current_period_end ? plan.sub.current_period_end : 0;
+    const renewalHuman = periodEnd ? new Date(periodEnd * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'your renewal';
+    const newName = newTier === 'pro' ? 'Pro' : 'Basic';
+    const message = isDowngrade
+      ? `Done — you’ll switch to ${newName}, billed ${TERM[newTerm].label.toLowerCase()}, at your renewal on ${renewalHuman}. You keep everything you’ve already paid for until then; nothing was charged today.`
+      : `Done — you’re now on ${newName}, billed ${TERM[newTerm].label.toLowerCase()}. Your next invoice on ${renewalHuman} reflects the new price; nothing was charged today.`;
     return res.status(200).json({
-      ok: true, newTier, newTerm, recurringCents: recurring,
-      message: `Done — you’re now on ${newTier === 'pro' ? 'Pro' : 'Basic'}, billed ${TERM[newTerm].label.toLowerCase()}. Your next invoice reflects the new price; nothing was charged today.`,
+      ok: true, newTier, newTerm, recurringCents: recurring, deferred: isDowngrade, renewalHuman, message,
     });
   } catch (e) {
     return res.status(200).json({ ok: false, message: `Could not change your plan: ${e.message}` });
