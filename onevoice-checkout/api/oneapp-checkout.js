@@ -19,7 +19,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // server-side source of truth — never trust client amounts
 const PLANS = {
   basic:    { cents: 9700,  name: 'OneApp Basic — Managed Hosting',
-              desc: 'Free AI-built one-page website · managed hosting, SSL, free yourbiz.oneapp.site address, 48-hour support · $97/month, cancel anytime' },
+              desc: 'Free AI-built one-page website · managed hosting, SSL, free yourname.oneworldlabs.site address, 48-hour support · $97/month, cancel anytime' },
   standard: { cents: 19700, name: 'OneApp Standard — Managed Hosting',
               desc: 'Free AI-built website + contact form · hosting, custom domain migration, security · $197/month, cancel anytime' },
   addon:    { cents: 2900,  name: 'OneApp Add-on Services',
@@ -55,7 +55,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
   try {
-    const { tier = 'basic', options = [], previewId = '', notes = '', contact = {}, sourceUrl = '' } = req.body || {};
+    const { tier = 'basic', options = [], previewId = '', notes = '', contact = {}, sourceUrl = '', siteName = '' } = req.body || {};
     const plan = PLANS[tier] ? tier : 'basic';
     const p = PLANS[plan];
 
@@ -66,6 +66,12 @@ export default async function handler(req, res) {
       company: String(contact.company || '').slice(0, 160),
     };
     if (!c.name || !c.email) return res.status(400).json({ error: 'Please add your name and email so we can reach you.' });
+
+    // customer-chosen site name (Round 16) — optional, captured at the free-preview
+    // intake step before payment; falls back to company/name in the webhook if blank.
+    // The actual character-stripping/sanitizing happens server-side via slugify()
+    // in oneapp-webhook.js at reserveSlug() time — we only cap length here.
+    const siteNameClean = String(siteName || '').slice(0, 60);
 
     // normalize option keys → labels (Standard now includes form+photo+text by default; add-ons carry their picks)
     const optKeys = Array.isArray(options) ? options.filter(k => OPT_LABELS[k]).slice(0, 8) : [];
@@ -95,8 +101,8 @@ export default async function handler(req, res) {
       : `${p.name} — $${(monthly/100).toFixed(0)}/month, billed ${billNote}. Your website design is FREE; this covers managed hosting, security, and maintenance` +
         (optLabels.length ? `, plus your features (${optLabels.join(', ')})` : '') +
         (plan === 'standard'
-          ? '. You go live free on a yourbusiness.oneapp.site address, or bring a domain you already own — we migrate & manage it.'
-          : '. You go live free on a yourbusiness.oneapp.site address (a custom domain is available on the Standard plan).') +
+          ? '. You go live free on a yourname.oneworldlabs.site address, or bring a domain you already own — we migrate & manage it.'
+          : '. You go live free on a yourname.oneworldlabs.site address (a custom domain is available on the Standard plan).') +
         ' No setup fee. Cancel anytime after the minimum term. Payments are non-refundable once a term starts.';
 
     const successUrl = plan === 'addon'
@@ -122,6 +128,7 @@ export default async function handler(req, res) {
         tier: plan,
         bill_note: billNote.slice(0, 80),
         name: c.name, email: c.email, phone: c.phone, company: c.company,
+        site_name: siteNameClean,
         options: optLabels.join(', ').slice(0, 300),
         preview_id: String(previewId).slice(0, 24),
         source_url: String(sourceUrl).slice(0, 200),
@@ -139,7 +146,7 @@ export default async function handler(req, res) {
       await kvSet('oa:order:' + session.id, {
         tier: plan, options: optKeys, optionLabels: optLabels,
         previewId, notes: String(notes).slice(0, 4000),
-        contact: c, sourceUrl, createdAt: new Date().toISOString(),
+        contact: c, sourceUrl, siteName: siteNameClean, createdAt: new Date().toISOString(),
       }, { ttlSeconds: 14 * 24 * 3600 });
     } catch { /* best-effort */ }
 

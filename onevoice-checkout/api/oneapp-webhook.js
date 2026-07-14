@@ -238,6 +238,10 @@ export default async function handler(req, res) {
       previewId: kv?.previewId || md.preview_id || '',
       sourceUrl: kv?.sourceUrl || md.source_url || '',
       notes: kv?.notes || md.notes || '',
+      // Round 16: customer-chosen site name, captured at the free-preview intake
+      // step (optional). Falls back to company/name below if blank — same
+      // fallback the slug logic already used before this field existed.
+      siteName: kv?.siteName || md.site_name || '',
     };
 
     // Paid build order → extend the 48h preview to 60d so the design isn't lost,
@@ -253,7 +257,7 @@ export default async function handler(req, res) {
         }
       } catch { /* soft-fail */ }
       try {
-        const slug = await reserveSlug(slugify(o.company || o.name), o.previewId, o.email);
+        const slug = await reserveSlug(slugify(o.siteName || o.company || o.name), o.previewId, o.email);
         if (slug) o.siteUrl = `https://${slug}.oneworldlabs.site`;
       } catch { /* soft-fail */ }
     }
