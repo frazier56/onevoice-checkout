@@ -155,9 +155,9 @@ async function fetchSite(url) {
    ---------------------------------------------------------------------------- */
 const DESIGN_SYSTEM = `
 VISUAL DESIGN — build to a 2020s-modern standard, not a 2014 template:
-- Type pairing: an expressive display font for headlines (Google Fonts "Outfit",
-  "Sora", or "Manrope" — pick one) at bold weight, paired with "Inter" for body
-  copy. Load both via Google Fonts <link>, not @import.
+- Type pairing: Google Fonts "Outfit" (weight 700-800) for headlines, paired with
+  "Inter" (400-600) for body copy — this is our locked brand pairing, confirmed
+  against the reference design. Load both via Google Fonts <link>, not @import.
 - Hero section must feel designed, not like a text block on a color: use a
   large bold headline (the business's core promise in ~6-9 words), a shorter
   supporting line, TWO call-to-action buttons side by side (one solid/filled
