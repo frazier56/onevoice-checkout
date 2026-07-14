@@ -1,0 +1,11 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "has": [
+        { "type": "host", "value": "(?<slug>[^.]+)\\.oneworldlabs\\.site" }
+      ],
+      "destination": "/api/oneapp-site?slug=:slug"
+    }
+  ]
+}
