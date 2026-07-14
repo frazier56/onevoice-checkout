@@ -1,18 +1,34 @@
 /* =============================================================================
-   OneApp — AI website rebuild engine  ·  POST /api/oneapp-redesign
+   OneApp — AI website rebuild engine  ·  ASYNC job model
    -----------------------------------------------------------------------------
+   POST /api/oneapp-redesign   → validates + rate-limits, kicks off the real
+     build in the background (Vercel Fluid Compute `waitUntil`), returns
+     { jobId } almost instantly. The client never holds one long connection
+     open — it polls GET /api/oneapp-job-status?job=<id> instead. This removes
+     the ~120s connection-layer ceiling we hit on slow/large builds (e.g.
+     redesigning bloated sites like office.com) and lets a build legitimately
+     run for minutes without the browser ever seeing a dropped connection.
+
    Two modes:
-     { mode:'url', url:'https://…' }          → fetch their site, redesign it
-     { mode:'new', brief:{ name, industry, city, description } } → build fresh
-   Calls the Anthropic API, stores the finished single-file HTML in KV
-   (oa:prev:<id>, 14-day TTL) and returns { id, changes:[…], previewPath }.
-   Rate-limited: 3 builds per IP per day (oa:rl:<ip>).
+     { mode:'url', url:'https://…' }
+     { mode:'new', brief:{ name, phone, personalNames, location, description } }
+       (industry/city dropped per Lee's Jul-13 request — redundant / inferable
+       from the free-text description; phone + optional name/location toggles
+       added instead.)
+
+   Job record  → oa:job:<jobId>          (KV, 1h TTL)
+     { status:'building'|'done'|'error', startedAt, previewId?, changes?, error? }
+   Preview     → oa:prev:<id>            (KV, 48h TTL) — unchanged from before.
+
    ENV: ANTHROPIC_API_KEY  (+ optional ANTHROPIC_MODEL, default claude-sonnet-5)
-   NOTE maxDuration 300 needs Fluid Compute (default on new Vercel projects).
-   If the deploy rejects it, drop to 60 and lower max_tokens to 6000.
+   NOTE maxDuration 300 + waitUntil need Fluid Compute (default on new Vercel
+   projects). If background work ever appears to silently vanish (job stuck on
+   'building' forever), Fluid Compute is the first thing to check in the
+   Vercel project settings.
    ============================================================================= */
 
 import { kvGet, kvSet } from '../lib/kv.js';
+import { waitUntil } from '@vercel/functions';
 
 export const config = { maxDuration: 300 };
 
@@ -129,6 +145,59 @@ async function fetchSite(url) {
   } finally { clearTimeout(t); }
 }
 
+/* ----------------------------------------------------------------------------
+   DESIGN SYSTEM — baked in from studying a GHL/Lovable-generated competitor
+   build Lee liked (Jul 13 2026). We are NOT copying their broken multi-page
+   nav (their top-nav links pointed at pages that don't exist) — single-page
+   anchor navigation is a hard requirement, ours must actually work. Everything
+   else about the visual language (type pairing, real hero presence, colored
+   icon-badge cards, trust pills, dual CTAs) is fair game to raise our bar.
+   ---------------------------------------------------------------------------- */
+const DESIGN_SYSTEM = `
+VISUAL DESIGN — build to a 2020s-modern standard, not a 2014 template:
+- Type pairing: an expressive display font for headlines (Google Fonts "Outfit",
+  "Sora", or "Manrope" — pick one) at bold weight, paired with "Inter" for body
+  copy. Load both via Google Fonts <link>, not @import.
+- Hero section must feel designed, not like a text block on a color: use a
+  large bold headline (the business's core promise in ~6-9 words), a shorter
+  supporting line, TWO call-to-action buttons side by side (one solid/filled
+  primary, one outline/ghost secondary — e.g. "Call now" + "See services"),
+  and a subtle background treatment (soft gradient mesh, large soft blurred
+  color blob, or a real photo if one exists in the source) — never a flat
+  single-color rectangle with plain centered text.
+- Trust signals near the hero or just below it: small pill/badge elements for
+  things like years in business, service area/city, licensed/insured,
+  rating — only include ones backed by real facts you were given; never invent.
+- Services/features section: each item in a card with a colored icon badge
+  (a simple circle or rounded-square in an accent color containing a
+  small inline SVG icon or a bold letter/emoji), a bold short title, and one
+  line of description — not a plain bullet list.
+- Use ONE clear accent color (derived from the business's existing branding if
+  visible in the source, otherwise a tasteful modern color — teal, indigo, or
+  warm amber all work) plus a neutral dark/light pairing. Use it consistently
+  for buttons, links, icon badges, and section accents.
+- Generous whitespace, rounded corners (10-16px) on cards/buttons, soft shadows
+  — avoid harsh borders and cramped spacing.
+- Footer: simple, dark or neutral, business name + contact + a copyright line.
+
+NAVIGATION — hard requirement, do not skip:
+- Single-page site. The top nav must be real, WORKING anchor links (href="#services",
+  href="#contact", etc.) that jump to sections actually present on this same
+  page. Do not create nav links that point to separate pages that don't exist —
+  that is a broken pattern seen in some competitor tools and must never appear
+  here. Every link in the nav must resolve to a section on this page.
+
+SCOPE — this is a FREE preview build. Do NOT include any of the following; they
+are paid add-on features sold separately and must never appear in this output:
+  - Multi-page structure or a page router of any kind (single page only, per above)
+  - Any AI chat widget or chatbot UI
+  - SEO-specific markup beyond basic <title>/<meta description> (no schema.org
+    JSON-LD, no sitemap references, no elaborate meta tag blocks)
+  - An online booking/appointment-scheduling system or embedded calendar
+  - A CMS, dashboard, login, or any admin-facing UI
+A single simple contact form (name/email/message, posting to "#") is fine —
+that is part of the base design, not an add-on.`;
+
 function buildPrompt(mode, source) {
   const shared = `
 You are OneApp's senior web designer (One World Labs). Produce ONE complete,
@@ -148,6 +217,7 @@ no external JS, Google Fonts allowed). Requirements:
 - Reuse the business's real image URLs where they exist and fit; otherwise use
   tasteful solid-color/gradient blocks — no stock-photo hotlinks.
 - Keep total output compact (target under 500 lines) — speed matters as much as polish here.
+${DESIGN_SYSTEM}
 
 Respond in EXACTLY this format, nothing else:
 <changes>["change 1","change 2",…]</changes>
@@ -213,6 +283,64 @@ async function callClaude(prompt) {
   }
 }
 
+/* ----------------------------------------------------------------------------
+   The actual build — runs in the background via waitUntil, well past the
+   point where the client's original request has already gotten its jobId
+   back. Writes its outcome to oa:job:<jobId> for the poller to pick up.
+   ---------------------------------------------------------------------------- */
+async function runBuild(jobId, { mode, url, brief, leadEmail }) {
+  try {
+    let prompt, sourceUrl = '';
+
+    if (mode === 'url') {
+      const site = await fetchSite(url);
+      sourceUrl = site.finalUrl;
+      prompt = buildPrompt('url', site.html);
+    } else {
+      const briefLines = [`Business name: ${brief.name}`];
+      if (brief.phone) briefLines.push(`Phone number(s): ${brief.phone}`);
+      if (brief.personalNames) briefLines.push(`Include these people's name(s) on the site: ${brief.personalNames}`);
+      if (brief.location) briefLines.push(`Location/address to show: ${brief.location}`);
+      briefLines.push(`What they do, in their own words: ${brief.description}`);
+      prompt = buildPrompt('new', briefLines.join('\n'));
+    }
+
+    const out = await callClaude(prompt);
+    const chM = out.match(/<changes>([\s\S]*?)<\/changes>/);
+    const pgM = out.match(/<page>([\s\S]*?)<\/page>/);
+    if (!pgM) throw new Error('The AI build came back malformed — please try again.');
+    let changes = [];
+    try { changes = JSON.parse(chM ? chM[1].trim() : '[]'); } catch { changes = []; }
+    if (!Array.isArray(changes)) changes = [];
+    const html = pgM[1].trim();
+    if (html.length < 500) throw new Error('The AI build came back too short — please try again.');
+
+    const id = rid();
+    const rec = { html, changes, sourceUrl, mode, email: leadEmail, createdAt: new Date().toISOString() };
+    const saved = await kvSet('oa:prev:' + id, rec, { ttlSeconds: 48 * 3600 }); // previews live 48h
+    if (!saved.ok) throw new Error('Could not save your preview — please try again.');
+
+    // best-effort lead capture (even if they never buy → a callable lead). 60-day TTL.
+    try {
+      await kvSet('oa:lead:' + leadEmail.toLowerCase(), {
+        email: leadEmail, mode, sourceUrl, previewId: id, lastBuildAt: new Date().toISOString(),
+      }, { ttlSeconds: 60 * 24 * 3600 });
+    } catch { /* soft-fail */ }
+
+    await sendPreviewEmail(leadEmail, id, changes);
+
+    await kvSet('oa:job:' + jobId, {
+      status: 'done', previewId: id, changes, previewPath: '/api/oneapp-preview?id=' + id, finishedAt: new Date().toISOString(),
+    }, { ttlSeconds: 3600 });
+  } catch (err) {
+    try {
+      await kvSet('oa:job:' + jobId, {
+        status: 'error', error: err.message || 'Something went wrong — please try again.', finishedAt: new Date().toISOString(),
+      }, { ttlSeconds: 3600 });
+    } catch { /* if even this fails, the client's soft-timeout will still catch it */ }
+  }
+}
+
 export default async function handler(req, res) {
   cors(req, res);
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -239,49 +367,33 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Please enter a valid email so we can save your preview.' });
     }
 
-    let prompt, sourceUrl = '';
-
+    let payload;
     if (mode === 'url') {
-      if (!url || url.length > 300) return res.status(400).json({ error: 'Please enter your website address.' });
-      const site = await fetchSite(url);
-      sourceUrl = site.finalUrl;
-      prompt = buildPrompt('url', site.html);
+      const u = String(url || '');
+      if (!u || u.length > 300) return res.status(400).json({ error: 'Please enter your website address.' });
+      payload = { mode: 'url', url: u, leadEmail };
     } else {
       const b = {
         name: String(brief.name || '').slice(0, 120),
-        industry: String(brief.industry || '').slice(0, 120),
-        city: String(brief.city || '').slice(0, 120),
+        phone: String(brief.phone || '').slice(0, 200),
+        personalNames: String(brief.personalNames || '').slice(0, 200),
+        location: String(brief.location || '').slice(0, 200),
         description: String(brief.description || '').slice(0, 1500),
       };
       if (!b.name || !b.description) return res.status(400).json({ error: 'Please tell us your business name and what you do.' });
-      prompt = buildPrompt('new', `Business name: ${b.name}\nIndustry: ${b.industry}\nCity/area: ${b.city}\nWhat they do (their words): ${b.description}`);
+      if (!b.phone) return res.status(400).json({ error: 'Please add a phone number so customers can reach you.' });
+      payload = { mode: 'new', brief: b, leadEmail };
     }
 
-    const out = await callClaude(prompt);
-    const chM = out.match(/<changes>([\s\S]*?)<\/changes>/);
-    const pgM = out.match(/<page>([\s\S]*?)<\/page>/);
-    if (!pgM) throw new Error('The AI build came back malformed — please try again.');
-    let changes = [];
-    try { changes = JSON.parse(chM ? chM[1].trim() : '[]'); } catch { changes = []; }
-    if (!Array.isArray(changes)) changes = [];
-    const html = pgM[1].trim();
-    if (html.length < 500) throw new Error('The AI build came back too short — please try again.');
+    const jobId = rid();
+    await kvSet('oa:job:' + jobId, { status: 'building', startedAt: new Date().toISOString() }, { ttlSeconds: 3600 });
 
-    const id = rid();
-    const rec = { html, changes, sourceUrl, mode, email: leadEmail, createdAt: new Date().toISOString() };
-    const saved = await kvSet('oa:prev:' + id, rec, { ttlSeconds: 48 * 3600 }); // previews live 48h
-    if (!saved.ok) return res.status(500).json({ error: 'Could not save your preview — please try again.' });
+    // Kick off the real work in the background — Fluid Compute keeps this
+    // running after we return the response below. The client polls
+    // /api/oneapp-job-status for the result instead of holding one connection.
+    waitUntil(runBuild(jobId, payload));
 
-    // best-effort lead capture (even if they never buy → a callable lead). 60-day TTL.
-    try {
-      await kvSet('oa:lead:' + leadEmail.toLowerCase(), {
-        email: leadEmail, mode, sourceUrl, previewId: id, lastBuildAt: new Date().toISOString(),
-      }, { ttlSeconds: 60 * 24 * 3600 });
-    } catch { /* soft-fail */ }
-
-    await sendPreviewEmail(leadEmail, id, changes);
-
-    return res.status(200).json({ id, changes, previewPath: '/api/oneapp-preview?id=' + id });
+    return res.status(200).json({ jobId });
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Something went wrong — please try again.' });
   }
