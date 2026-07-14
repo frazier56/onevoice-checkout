@@ -57,6 +57,34 @@ async function ghl(method, path, body, version = V_MAIN) {
 
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
+/* ---- short branded address: <slug>.oneworldlabs.site ----
+   Reserves a short pointer (oa:site:<slug> -> { previewId }) so the customer's
+   real address is short and readable instead of the long vercel.app preview
+   link. See vercel.json (Host-based rewrite) + api/oneapp-site.js (server). */
+function slugify(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'site';
+}
+// Basic doesn't include the contact form (it's the Standard-plan differentiator) —
+// the free-preview builder always includes one per oneapp-redesign.js's base spec,
+// so for a Basic order we strip it from the stored record once, at payment time,
+// rather than relying on a human to remember to do it before "deploying" (deploy
+// is now automatic — see reserveSlug() below).
+function stripContactForm(html) {
+  return html.replace(/<form\b[^>]*action=["'][^"']*oneapp-contact[^"']*["'][^>]*>[\s\S]*?<\/form>/gi, '');
+}
+
+async function reserveSlug(base, previewId, ownerEmail) {
+  for (let i = 0; i < 6; i++) {
+    const candidate = i === 0 ? base : `${base}-${Math.random().toString(36).slice(2, 5)}`;
+    let existing = null; try { existing = await kvGet('oa:site:' + candidate); } catch { existing = null; }
+    if (!existing || existing.previewId === previewId) {
+      try { await kvSet('oa:site:' + candidate, { previewId, email: ownerEmail, createdAt: new Date().toISOString() }); } catch { return null; }
+      return candidate;
+    }
+  }
+  return null; // exceedingly unlikely after 6 tries
+}
+
 function emailWrap(inner) {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;margin:0;padding:0;"><tr><td align="center" style="padding:0;">
   <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
@@ -76,6 +104,7 @@ function customerBuildHtml(o) {
   const inner = `<tr><td style="padding:30px 22px 6px;">
     <h1 style="font-size:23px;font-weight:800;color:#0B0F1A;margin:0 0 10px;">You're in, ${esc(o.firstName)} — your new site is being built.</h1>
     <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Our team is finishing your website right now. <b>Your completed site will land in this inbox within 24 hours</b> — usually much sooner — with your new address and login details.</p>
+    ${o.siteUrl ? `<p style="font-size:14px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Your address: <a href="${esc(o.siteUrl)}" style="color:#0B8C80;font-weight:700;">${esc(o.siteUrl.replace(/^https?:\/\//, ''))}</a></p>` : ''}
     ${previewLink ? `<p style="font-size:14px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Want another look at the design you picked? <a href="${previewLink}" style="color:#0B8C80;font-weight:700;">View your preview →</a></p>` : ''}
   </td></tr>
   <tr><td style="padding:6px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fbfaf6;border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
@@ -83,7 +112,7 @@ function customerBuildHtml(o) {
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#1A2233;">
       <tr><td style="padding:4px 0;color:#5a6677;">Your website</td><td align="right" style="padding:4px 0;font-weight:700;">Built FREE — no setup fee</td></tr>
       <tr><td style="padding:4px 0;color:#5a6677;">Hosting &amp; security</td><td align="right" style="padding:4px 0;font-weight:600;">Fully managed, always on</td></tr>
-      <tr><td style="padding:4px 0;color:#5a6677;">Web address</td><td align="right" style="padding:4px 0;font-weight:600;">${o.tier === 'standard' ? 'Free yourbiz.oneapp.site — or connect your own domain' : 'Free yourbiz.oneapp.site'}</td></tr>
+      <tr><td style="padding:4px 0;color:#5a6677;">Web address</td><td align="right" style="padding:4px 0;font-weight:600;">${o.siteUrl ? esc(o.siteUrl.replace(/^https?:\/\//, '')) : (o.tier === 'standard' ? 'Free — or connect your own domain' : 'Free')}</td></tr>
       ${featRow}
     </table>
     <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Billed ${esc(o.priceBlurb)}. Cancel anytime after the minimum term. Payments are non-refundable once a term starts. ${o.tier === 'standard' ? 'A custom domain is bring-your-own (you buy &amp; own it; we connect and manage it).' : 'Want a custom domain? Available on the Standard plan — just ask and we\'ll switch you over.'} No hidden fees.</div>
@@ -127,8 +156,9 @@ function founderHtml(o, sessionId) {
     Chosen features: <b>${esc(o.options.join(', ') || '— (Basic: none)')}</b><br>
     Old site: ${o.sourceUrl ? `<a href="${esc(o.sourceUrl)}">${esc(o.sourceUrl)}</a>` : 'NONE — built from scratch'}<br>
     Approved preview: ${o.previewId ? `<a href="${previewLink}">${previewLink}</a>` : previewLink}<br>
+    Live address: ${o.siteUrl ? `<a href="${esc(o.siteUrl)}">${esc(o.siteUrl)}</a> (already serving live — reserved automatically, no manual deploy step)` : 'FAILED to reserve — check oa:site: KV / assign manually'}<br>
     Customer notes: ${esc(o.notes) || '—'}<br><br>
-    <b>To do:</b> deploy site from preview (apply notes + features)${o.tier === 'standard' ? ', register/connect their domain if requested' : ' on the free yourbiz.oneapp.site address (no domain work — Basic doesn\'t include that)'}, send hand-off email.${o.tier === 'basic' ? ' <b style="color:#b91c1c;">Basic order — strip the contact form before deploying (contact form is a Standard-plan feature; the free preview shows it for demo purposes only).</b>' : ''}<br>
+    <b>To do:</b> apply their requested notes/edits to the design${o.tier === 'standard' ? ', connect their own domain if they bring one' : ''}.${o.tier === 'basic' ? ' <b style="color:#b91c1c;">Basic order — strip the contact form before considering it final polish (contact form is a Standard-plan feature; Basic sites can keep the free-preview form working, just don\'t market it as a Basic feature).</b>' : ''}<br>
     Stripe session: ${esc(sessionId)} · ${esc(o.priceBlurb)} subscription active (preview TTL extended to 60 days on payment).
   </div>`;
 }
@@ -210,11 +240,21 @@ export default async function handler(req, res) {
       notes: kv?.notes || md.notes || '',
     };
 
-    // Paid build order → extend the 48h preview to 60d so the design isn't lost.
+    // Paid build order → extend the 48h preview to 60d so the design isn't lost,
+    // and reserve a short branded address (name.oneworldlabs.site) so the
+    // customer never has to see the long vercel.app preview link.
+    o.siteUrl = '';
     if (!o.isAddon && o.previewId) {
       try {
         const prev = await kvGet('oa:prev:' + o.previewId);
-        if (prev) await kvSet('oa:prev:' + o.previewId, prev, { ttlSeconds: 60 * 24 * 3600 });
+        if (prev) {
+          if (o.tier === 'basic' && prev.html) prev.html = stripContactForm(prev.html);
+          await kvSet('oa:prev:' + o.previewId, prev, { ttlSeconds: 60 * 24 * 3600 });
+        }
+      } catch { /* soft-fail */ }
+      try {
+        const slug = await reserveSlug(slugify(o.company || o.name), o.previewId, o.email);
+        if (slug) o.siteUrl = `https://${slug}.oneworldlabs.site`;
       } catch { /* soft-fail */ }
     }
 

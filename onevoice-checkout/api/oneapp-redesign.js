@@ -211,8 +211,14 @@ are paid add-on features sold separately and must never appear in this output:
     JSON-LD, no sitemap references, no elaborate meta tag blocks)
   - An online booking/appointment-scheduling system or embedded calendar
   - A CMS, dashboard, login, or any admin-facing UI
-A single simple contact form (name/email/message, posting to "#") is fine —
-that is part of the base design, not an add-on.`;
+A single simple contact form (name/email/message) is fine — that is part of
+the base design, not an add-on. It MUST actually deliver: use a plain HTML
+form (no JS submit handler, no fetch/AJAX) with method="POST" and
+action="__ONEAPP_CONTACT__" exactly (that literal placeholder string gets
+swapped for the real delivery endpoint after generation — do not use "#" or
+any other action value, and do not add onsubmit/JS of any kind to this form).
+Name the fields exactly name, email, message (and phone if you include a
+phone field) so the backend can read them.`;
 
 function buildPrompt(mode, source) {
   const shared = `
@@ -229,7 +235,8 @@ no external JS, Google Fonts allowed). Requirements:
   address, hours, testimonials. NEVER invent facts or use lorem ipsum.
 - Clear visual hierarchy: bold hero with the business's core promise, services
   section, trust/testimonials if available, prominent contact section with
-  click-to-call and a simple contact form (form can post to "#" for now).
+  click-to-call and a simple contact form (see the contact-form rules below —
+  it must actually deliver, not post to "#").
 - Reuse the business's real image URLs where they exist and fit; otherwise use
   tasteful solid-color/gradient blocks — no stock-photo hotlinks.
 - Keep the code itself efficient (target under 500 lines of markup/CSS) — this
@@ -331,10 +338,14 @@ async function runBuild(jobId, { mode, url, brief, leadEmail }) {
     let changes = [];
     try { changes = JSON.parse(chM ? chM[1].trim() : '[]'); } catch { changes = []; }
     if (!Array.isArray(changes)) changes = [];
-    const html = pgM[1].trim();
+    let html = pgM[1].trim();
     if (html.length < 500) throw new Error('The AI build came back too short — please try again.');
 
     const id = rid();
+    // Wire the generated contact form (if any) to the real delivery endpoint now
+    // that we know this build's id — the AI is instructed to emit this exact
+    // placeholder as the form's action so we never have to guess/regex-match "#".
+    html = html.split('__ONEAPP_CONTACT__').join('/api/oneapp-contact?id=' + id);
     const rec = { html, changes, sourceUrl, mode, email: leadEmail, createdAt: new Date().toISOString() };
     const saved = await kvSet('oa:prev:' + id, rec, { ttlSeconds: 48 * 3600 }); // previews live 48h
     if (!saved.ok) throw new Error('Could not save your preview — please try again.');
