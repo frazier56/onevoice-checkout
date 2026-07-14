@@ -283,7 +283,6 @@ async function callClaudeOnce(prompt) {
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 12000,
-      temperature: 0.55,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
