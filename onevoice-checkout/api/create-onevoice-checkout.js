@@ -5,6 +5,9 @@
    and saves the card; the webhook then starts the 7-day-trialing plan.
    v3 adds a PLAN SUMMARY on the Stripe page (custom_text + richer line item)
    so the customer sees plan/trial/then-price, not just the setup amount.
+   v3.1 adds a "foundertest" promo code (internal use only): $1 setup fee,
+   $0 recurring plan, so Lee can create test subscriptions on the LIVE Stripe
+   account without real cost. Threaded through metadata.promo to the webhook.
    ⚠️ TEST IN STRIPE TEST MODE FIRST. ENV: STRIPE_SECRET_KEY.
    ============================================================================= */
 
@@ -22,6 +25,10 @@ const TERM  = {
   annual:  { months: 12, off: 0.35, word: 'per year' },
 };
 
+// internal test promo — $1 setup, $0 recurring (see stripe-webhook.js)
+const FOUNDER_TEST_CODE = 'foundertest';
+const FOUNDER_TEST_SETUP_CENTS = 100;
+
 const CORS = {
   'Access-Control-Allow-Origin': 'https://onevoice.onesocial.ai',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -38,24 +45,27 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')   return res.status(405).json({ error: 'POST only' });
 
   try {
-    const { tier = 'basic', term = 'monthly', count = 1, contact = {}, listings = [] } = req.body || {};
+    const { tier = 'basic', term = 'monthly', count = 1, contact = {}, listings = [], promo = '' } = req.body || {};
     const n = Math.max(1, parseInt(count) || 1);
-    const setup = SETUP.first + SETUP.add * (n - 1);
+    const promoCode = String(promo || '').trim().toLowerCase();
+    const isFounderTest = promoCode === FOUNDER_TEST_CODE;
 
     const p = PRICE[tier] || PRICE.basic;
     const t = TERM[term] || TERM.monthly;
-    const recurring = Math.round((p.base + p.add * (n - 1)) * t.months * (1 - t.off)); // term total, discount applied
+    const setup = isFounderTest ? FOUNDER_TEST_SETUP_CENTS : (SETUP.first + SETUP.add * (n - 1));
+    const recurring = isFounderTest ? 0 : Math.round((p.base + p.add * (n - 1)) * t.months * (1 - t.off)); // term total, discount applied
     const planLabel = tier === 'pro' ? 'Pro' : 'Basic';
     const planName  = `OneVoice ${planLabel} — ${n} listing${n > 1 ? 's' : ''}`;
     const trialEnd  = new Date(Date.now() + 7 * 24 * 3600 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
 
     // Plan summary shown on the Stripe page (above the pay button)
-    const summary =
-      `${planName} · billed ${t.word}. ` +
+    const summary = isFounderTest
+      ? `FOUNDER TEST ORDER (internal) — ${planName}. $1 setup charged today, plan set to $0/mo — no future billing.`
+      : (`${planName} · billed ${t.word}. ` +
       `7-day free trial — you are NOT charged for the plan today. ` +
       `After the trial, ${money(recurring)} ${t.word} begins on ${trialEnd}. ` +
       `The one-time setup fee below (${money(setup)}) is due today and is non-refundable. ` +
-      `Cancel anytime before ${trialEnd} and the plan won't bill.`;
+      `Cancel anytime before ${trialEnd} and the plan won't bill.`);
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -63,7 +73,7 @@ export default async function handler(req, res) {
       customer_creation: 'always',
       payment_intent_data: {
         setup_future_usage: 'off_session',
-        description: `OneVoice one-time setup fee — ${planName} (${term})`,
+        description: `OneVoice one-time setup fee — ${planName} (${term})${isFounderTest ? ' [FOUNDER TEST]' : ''}`,
       },
       line_items: [{
         quantity: 1,
@@ -71,8 +81,10 @@ export default async function handler(req, res) {
           currency: 'usd',
           unit_amount: setup,
           product_data: {
-            name: `OneVoice ${planLabel} — one-time setup (${n} listing${n > 1 ? 's' : ''})`,
-            description: `7-day free trial on your plan. Then ${money(recurring)} ${t.word} starting ${trialEnd}. This charge is the one-time setup fee only.`,
+            name: `OneVoice ${planLabel} — one-time setup (${n} listing${n > 1 ? 's' : ''})${isFounderTest ? ' [FOUNDER TEST]' : ''}`,
+            description: isFounderTest
+              ? `Founder test order — plan set to $0/mo, no future billing.`
+              : `7-day free trial on your plan. Then ${money(recurring)} ${t.word} starting ${trialEnd}. This charge is the one-time setup fee only.`,
           },
         },
       }],
@@ -82,6 +94,7 @@ export default async function handler(req, res) {
         phone: contact.phone || '', license: contact.license || '', username: contact.username || '',
         tier, term, listings_count: String(n),
         setup_cents: String(setup),
+        promo: promoCode,
         listings: JSON.stringify(listings).slice(0, 480),
       },
       success_url: 'https://onevoice.onesocial.ai/welcome?session_id={CHECKOUT_SESSION_ID}',
