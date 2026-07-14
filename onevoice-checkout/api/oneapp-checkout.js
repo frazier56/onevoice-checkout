@@ -21,7 +21,7 @@ const PLANS = {
   basic:    { cents: 9700,  name: 'OneApp Basic — Managed Hosting',
               desc: 'Free AI-built one-page website · managed hosting, SSL, free yourbiz.oneapp.site address, 48-hour support · $97/month, cancel anytime' },
   standard: { cents: 19700, name: 'OneApp Standard — Managed Hosting',
-              desc: 'Free AI-built website + contact form · hosting, custom domain migration + business email, security · $197/month, cancel anytime' },
+              desc: 'Free AI-built website + contact form · hosting, custom domain migration, security · $197/month, cancel anytime' },
   addon:    { cents: 2900,  name: 'OneApp Add-on Services',
               desc: '$29/month to activate your selected upgrades — exact plan scoped with you on a quick call' },
 };
@@ -95,8 +95,8 @@ export default async function handler(req, res) {
       : `${p.name} — $${(monthly/100).toFixed(0)}/month, billed ${billNote}. Your website design is FREE; this covers managed hosting, security, and maintenance` +
         (optLabels.length ? `, plus your features (${optLabels.join(', ')})` : '') +
         (plan === 'standard'
-          ? '. You go live free on a yourbusiness.oneapp.site address, or bring a domain you already own — we migrate & manage it, plus set up your business email.'
-          : '. You go live free on a yourbusiness.oneapp.site address (custom domain + business email are available on the Standard plan).') +
+          ? '. You go live free on a yourbusiness.oneapp.site address, or bring a domain you already own — we migrate & manage it.'
+          : '. You go live free on a yourbusiness.oneapp.site address (a custom domain is available on the Standard plan).') +
         ' No setup fee. Cancel anytime after the minimum term. Payments are non-refundable once a term starts.';
 
     const successUrl = plan === 'addon'

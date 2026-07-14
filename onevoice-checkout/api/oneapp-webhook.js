@@ -84,10 +84,9 @@ function customerBuildHtml(o) {
       <tr><td style="padding:4px 0;color:#5a6677;">Your website</td><td align="right" style="padding:4px 0;font-weight:700;">Built FREE — no setup fee</td></tr>
       <tr><td style="padding:4px 0;color:#5a6677;">Hosting &amp; security</td><td align="right" style="padding:4px 0;font-weight:600;">Fully managed, always on</td></tr>
       <tr><td style="padding:4px 0;color:#5a6677;">Web address</td><td align="right" style="padding:4px 0;font-weight:600;">${o.tier === 'standard' ? 'Free yourbiz.oneapp.site — or connect your own domain' : 'Free yourbiz.oneapp.site'}</td></tr>
-      ${o.tier === 'standard' ? `<tr><td style="padding:4px 0;color:#5a6677;">Business email</td><td align="right" style="padding:4px 0;font-weight:600;">Included</td></tr>` : ''}
       ${featRow}
     </table>
-    <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Billed ${esc(o.priceBlurb)}. Cancel anytime after the minimum term. Payments are non-refundable once a term starts. ${o.tier === 'standard' ? 'A custom domain is bring-your-own (you buy &amp; own it; we connect and manage it).' : 'Want a custom domain and business email? Available on the Standard plan — just ask and we\'ll switch you over.'} No hidden fees.</div>
+    <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Billed ${esc(o.priceBlurb)}. Cancel anytime after the minimum term. Payments are non-refundable once a term starts. ${o.tier === 'standard' ? 'A custom domain is bring-your-own (you buy &amp; own it; we connect and manage it).' : 'Want a custom domain? Available on the Standard plan — just ask and we\'ll switch you over.'} No hidden fees.</div>
   </td></tr></table></td></tr>
   <tr><td style="padding:16px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
     <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:8px;">Want more? Upgrade anytime</div>
@@ -129,7 +128,7 @@ function founderHtml(o, sessionId) {
     Old site: ${o.sourceUrl ? `<a href="${esc(o.sourceUrl)}">${esc(o.sourceUrl)}</a>` : 'NONE — built from scratch'}<br>
     Approved preview: ${o.previewId ? `<a href="${previewLink}">${previewLink}</a>` : previewLink}<br>
     Customer notes: ${esc(o.notes) || '—'}<br><br>
-    <b>To do:</b> deploy site from preview (apply notes + features)${o.tier === 'standard' ? ', register/connect their domain if requested, set up their business email mailbox' : ' on the free yourbiz.oneapp.site address (no domain/email work — Basic doesn\'t include those)'}, send hand-off email.${o.tier === 'basic' ? ' <b style="color:#b91c1c;">Basic order — strip the contact form before deploying (contact form is a Standard-plan feature; the free preview shows it for demo purposes only).</b>' : ''}<br>
+    <b>To do:</b> deploy site from preview (apply notes + features)${o.tier === 'standard' ? ', register/connect their domain if requested' : ' on the free yourbiz.oneapp.site address (no domain work — Basic doesn\'t include that)'}, send hand-off email.${o.tier === 'basic' ? ' <b style="color:#b91c1c;">Basic order — strip the contact form before deploying (contact form is a Standard-plan feature; the free preview shows it for demo purposes only).</b>' : ''}<br>
     Stripe session: ${esc(sessionId)} · ${esc(o.priceBlurb)} subscription active (preview TTL extended to 60 days on payment).
   </div>`;
 }
