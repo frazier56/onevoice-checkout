@@ -72,11 +72,15 @@ async function sendPreviewEmail(email, id, changes) {
     const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
         <tr><td align="center" style="background:#0B0F1A;padding:26px;"><div style="font-size:26px;font-weight:800;color:#ffffff;"><span style="color:#14b8a6;">One</span>App</div></td></tr>
-        <tr><td style="padding:30px 22px 6px;">
-          <h1 style="font-size:22px;font-weight:800;color:#0B0F1A;margin:0 0 10px;">Your free website preview is ready 🎉</h1>
-          <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Our AI just built your site. It's saved for <b>48 hours</b> — come back anytime to look it over, tweak it, or make it live.</p>
-          <p style="margin:0 0 18px;"><a href="${resumeLink}" style="display:inline-block;padding:14px 26px;border-radius:10px;background:#14b8a6;color:#04302b;font-weight:800;text-decoration:none;">View my free preview →</a></p>
-          ${changeRows ? `<div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:8px;">What we built</div><ul style="font-size:13.5px;color:#3d4753;padding-left:18px;margin:0 0 10px;">${changeRows}</ul>` : ''}
+        <tr><td style="padding:34px 26px 8px;">
+          <h1 style="font-size:23px;font-weight:800;color:#0B0F1A;margin:0 0 10px;line-height:1.3;">Your free website preview is ready 🎉</h1>
+          <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 22px;">Our AI just built your site. It's saved for <b>48 hours</b> — come back anytime to look it over, tweak it, or make it live.</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 26px;"><tr>
+            <td align="center" bgcolor="#14b8a6" style="border-radius:12px;">
+              <a href="${resumeLink}" style="display:inline-block;padding:16px 34px;font-size:15.5px;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-weight:800;color:#04302b;text-decoration:none;border-radius:12px;">View my free preview →</a>
+            </td>
+          </tr></table>
+          ${changeRows ? `<div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:8px;">What we built</div><ul style="font-size:13.5px;color:#3d4753;padding-left:18px;margin:0 0 14px;">${changeRows}</ul>` : ''}
           <p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:14px 0 0;">Didn't request this? You can safely ignore this email.</p>
         </td></tr>
         <tr><td style="padding:18px 22px;"><p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:0;">Questions? Reply to this email or reach <a href="mailto:${SUPPORT_EMAIL}" style="color:#0B8C80;font-weight:600;">${SUPPORT_EMAIL}</a>.<br>OneApp, a One World Labs company.</p></td></tr>
@@ -396,6 +400,20 @@ export default async function handler(req, res) {
     if (!EMAIL_RE.test(leadEmail)) {
       return res.status(400).json({ error: 'Please enter a valid email so we can save your preview.' });
     }
+
+    // --- one-free-preview-per-email gate: oa:lead:<email> is only ever written
+    // AFTER a successful build (see runBuild below), so this can't false-positive
+    // on a prior failed/errored attempt — only a real completed free build blocks
+    // a second one. Same rule for both modes (redesign or from-scratch). ---
+    try {
+      const existingLead = await kvGet('oa:lead:' + leadEmail.toLowerCase());
+      if (existingLead && existingLead.previewId) {
+        return res.status(409).json({
+          code: 'ALREADY_BUILT',
+          error: 'You already have a free preview saved to this email — check your inbox for the link to view or claim it. Want something changed instead? Chat with us or book a quick call and we\'ll make the edits for you, usually within 24 hours.',
+        });
+      }
+    } catch { /* soft-fail — a KV hiccup should never block a legitimate first-time build */ }
 
     let payload;
     if (mode === 'url') {
