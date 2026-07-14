@@ -84,12 +84,9 @@ single-file, production-quality HTML page (all CSS inline in one <style> tag,
 no external JS, Google Fonts allowed). Requirements:
 - Modern, clean, professional. MOBILE-FIRST — most visitors are on phones, so the
   single-column mobile layout must look great first.
-- REQUIRED: add a real @media (min-width:768px) desktop layout that visibly differs
-  from mobile — not just a centered max-width wrapper. At minimum: the hero becomes
-  a two-column layout (headline/CTA left, image or visual right), the services/features
-  section becomes a multi-column grid (2-3 columns) instead of stacked, and font sizes
-  step up. A reviewer switching between mobile and desktop width must see an obviously
-  different layout, not the same stacked column just wider.
+- Add ONE @media (min-width:768px) block that makes the hero 2-column and the
+  services section a 2-3 column grid — must look visibly different from mobile,
+  not just a wider single column. Keep this block short; don't restyle everything.
 - Fast and accessible; use responsive units, readable tap targets, no fixed widths.
 - Real content only — keep the business's actual name, services, phone,
   address, hours, testimonials. NEVER invent facts or use lorem ipsum.
