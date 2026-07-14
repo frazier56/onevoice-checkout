@@ -100,7 +100,7 @@ function cleanHtml(html, baseUrl) {
     const base = new URL(baseUrl);
     h = h.replace(/src="\/(?!\/)/g, `src="${base.origin}/`);
   } catch { /* keep as-is */ }
-  return h.slice(0, 25000);
+  return h.slice(0, 12000);
 }
 
 async function fetchSite(url) {
