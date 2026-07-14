@@ -172,6 +172,14 @@ VISUAL DESIGN — build to a 2020s-modern standard, not a 2014 template:
   (a simple circle or rounded-square in an accent color containing a
   small inline SVG icon or a bold letter/emoji), a bold short title, and one
   line of description — not a plain bullet list.
+- About/owner/team section (include ONLY if the brief gives you a real person's
+  name or story to work with): this section gets the EXACT SAME card treatment
+  as services — background contrast from the page (a tinted panel or a bordered
+  card, never a bare white/flat band), rounded corners, a soft shadow or border.
+  The person's initials/photo badge should sit inside that card, sized at least
+  80-96px, with a colored ring or gradient border — not a small plain circle
+  floating next to plain paragraph text. This section is a common place where
+  quality quietly drops to a generic template; it must not.
 - Use ONE clear accent color (derived from the business's existing branding if
   visible in the source, otherwise a tasteful modern color — teal, indigo, or
   warm amber all work) plus a neutral dark/light pairing. Use it consistently
@@ -179,6 +187,14 @@ VISUAL DESIGN — build to a 2020s-modern standard, not a 2014 template:
 - Generous whitespace, rounded corners (10-16px) on cards/buttons, soft shadows
   — avoid harsh borders and cramped spacing.
 - Footer: simple, dark or neutral, business name + contact + a copyright line.
+- CONSISTENCY RULE (this is the most common way these builds fail): every
+  section you include must carry the SAME level of visual craft as the hero —
+  card backgrounds, shadows, rounded corners, and the accent color must show up
+  throughout the page, not just above the fold. Before finishing, mentally
+  scan each section in order and check none of them is a plain, unstyled band
+  of text that looks like a leftover from a 2010s template. If a section has
+  no explicit spec above (e.g. About), apply the same card/shadow/radius/accent
+  treatment used for services rather than inventing something plainer.
 
 NAVIGATION — hard requirement, do not skip:
 - Single-page site. The top nav must be real, WORKING anchor links (href="#services",
@@ -216,7 +232,10 @@ no external JS, Google Fonts allowed). Requirements:
   click-to-call and a simple contact form (form can post to "#" for now).
 - Reuse the business's real image URLs where they exist and fit; otherwise use
   tasteful solid-color/gradient blocks — no stock-photo hotlinks.
-- Keep total output compact (target under 500 lines) — speed matters as much as polish here.
+- Keep the code itself efficient (target under 500 lines of markup/CSS) — this
+  is about lean, non-repetitive code, NOT a reason to under-design any section.
+  Every section still gets full visual treatment; write tight CSS (reusable
+  classes like .card, .badge) rather than skipping polish to save lines.
 ${DESIGN_SYSTEM}
 
 Respond in EXACTLY this format, nothing else:
