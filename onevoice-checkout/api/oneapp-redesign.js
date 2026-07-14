@@ -27,6 +27,53 @@ const ALLOWED_ORIGINS = [
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+/* ---- free-preview-ready email (fire on every successful build) ---- */
+const GHL_BASE = 'https://services.leadconnectorhq.com';
+const V_MAIN = '2021-07-28';
+const V_CONV = '2021-04-15';
+const ORDERS_LOCATION_ID = process.env.GHL_ORDERS_LOCATION_ID || 'VkZwS3nGWMX06NRwLxJ8';
+const LOCATION_TOKEN = process.env.GHL_LOCATION_TOKEN || process.env.GHL_AGENCY_TOKEN;
+const SUPPORT_EMAIL = 'contact@oneworldlabs.ai';
+const SITE_URL = process.env.ONEAPP_SITE_URL || 'https://www.oneworldlabs.ai/onescore-preview/oneapp.html';
+
+async function ghl(method, path, body, version = V_MAIN) {
+  const r = await fetch(`${GHL_BASE}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${LOCATION_TOKEN}`, Version: version, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = {}; try { data = await r.json(); } catch { data = {}; }
+  return { ok: r.ok, status: r.status, data };
+}
+function escHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+async function sendPreviewEmail(email, id, changes) {
+  try {
+    if (!LOCATION_TOKEN) return; // not configured — soft-fail, never block the build
+    const resumeLink = `${SITE_URL}?resume=${encodeURIComponent(id)}`;
+    const first = (String(email).split('@')[0] || 'there');
+    const changeRows = (changes || []).slice(0, 6).map(c => `<li style="margin:4px 0;">${escHtml(c)}</li>`).join('');
+    const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
+        <tr><td align="center" style="background:#0B0F1A;padding:26px;"><div style="font-size:26px;font-weight:800;color:#ffffff;"><span style="color:#14b8a6;">One</span>App</div></td></tr>
+        <tr><td style="padding:30px 22px 6px;">
+          <h1 style="font-size:22px;font-weight:800;color:#0B0F1A;margin:0 0 10px;">Your free website preview is ready 🎉</h1>
+          <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Our AI just built your site. It's saved for <b>48 hours</b> — come back anytime to look it over, tweak it, or make it live.</p>
+          <p style="margin:0 0 18px;"><a href="${resumeLink}" style="display:inline-block;padding:14px 26px;border-radius:10px;background:#14b8a6;color:#04302b;font-weight:800;text-decoration:none;">View my free preview →</a></p>
+          ${changeRows ? `<div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:8px;">What we built</div><ul style="font-size:13.5px;color:#3d4753;padding-left:18px;margin:0 0 10px;">${changeRows}</ul>` : ''}
+          <p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:14px 0 0;">Didn't request this? You can safely ignore this email.</p>
+        </td></tr>
+        <tr><td style="padding:18px 22px;"><p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:0;">Questions? Reply to this email or reach <a href="mailto:${SUPPORT_EMAIL}" style="color:#0B8C80;font-weight:600;">${SUPPORT_EMAIL}</a>.<br>OneApp, a One World Labs company.</p></td></tr>
+      </table></td></tr></table>`;
+    const cr = await ghl('POST', '/contacts/upsert', { locationId: ORDERS_LOCATION_ID, email, firstName: first, source: 'OneApp free preview', tags: ['oneapp-preview-lead'] });
+    const contactId = cr.data?.contact?.id || cr.data?.id || '';
+    if (!contactId) return;
+    const body = { type: 'Email', contactId, subject: 'Your free website preview is ready 🎉', html };
+    if (process.env.GHL_EMAIL_FROM) body.emailFrom = process.env.GHL_EMAIL_FROM;
+    await ghl('POST', '/conversations/messages', body, V_CONV);
+  } catch { /* best-effort — an email hiccup should never fail the build */ }
+}
+
 function cors(req, res) {
   const o = req.headers.origin || '';
   res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS.includes(o) ? o : ALLOWED_ORIGINS[0]);
@@ -63,7 +110,7 @@ async function fetchSite(url) {
     throw new Error('That does not look like a public website address.');
   }
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 12000);
+  const t = setTimeout(() => ctrl.abort(), 20000);
   try {
     const r = await fetch(u, {
       signal: ctrl.signal,
@@ -74,6 +121,11 @@ async function fetchSite(url) {
     const html = await r.text();
     if (!html || html.length < 200) throw new Error('That site returned an empty page. Double-check the address.');
     return { finalUrl: r.url || u, html: cleanHtml(html, r.url || u) };
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error('That website took too long to load — it may be a large or slow site. Try again in a moment, or switch to "I don\'t have a website yet" and tell us about your business instead.');
+    }
+    throw e;
   } finally { clearTimeout(t); }
 }
 
@@ -124,7 +176,7 @@ Brief:
 ${source}`;
 }
 
-async function callClaude(prompt) {
+async function callClaudeOnce(prompt) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -139,8 +191,26 @@ async function callClaude(prompt) {
     }),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data?.error?.message || `AI call failed (HTTP ${r.status})`);
+  if (!r.ok) {
+    const err = new Error(data?.error?.message || `AI call failed (HTTP ${r.status})`);
+    err.status = r.status;
+    throw err;
+  }
   return (data.content || []).map(c => c.text || '').join('');
+}
+
+/* Retry once, behind the scenes, on transient failures only (rate limit, overload,
+   5xx, network blip). Real problems — bad request, auth, credits — surface immediately
+   so we don't waste another minute retrying something that will never succeed. */
+async function callClaude(prompt) {
+  try {
+    return await callClaudeOnce(prompt);
+  } catch (e) {
+    const transient = !e.status || e.status === 429 || e.status === 529 || e.status >= 500;
+    if (!transient) throw e;
+    await new Promise(res => setTimeout(res, 1500));
+    return await callClaudeOnce(prompt);
+  }
 }
 
 export default async function handler(req, res) {
@@ -208,6 +278,8 @@ export default async function handler(req, res) {
         email: leadEmail, mode, sourceUrl, previewId: id, lastBuildAt: new Date().toISOString(),
       }, { ttlSeconds: 60 * 24 * 3600 });
     } catch { /* soft-fail */ }
+
+    await sendPreviewEmail(leadEmail, id, changes);
 
     return res.status(200).json({ id, changes, previewPath: '/api/oneapp-preview?id=' + id });
   } catch (err) {

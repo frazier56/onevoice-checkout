@@ -130,7 +130,7 @@ function founderHtml(o, sessionId) {
     Approved preview: ${o.previewId ? `<a href="${previewLink}">${previewLink}</a>` : previewLink}<br>
     Customer notes: ${esc(o.notes) || '—'}<br><br>
     <b>To do:</b> register domain, deploy site from preview (apply notes + features), set up
-    domain email, send hand-off email.<br>
+    domain email, send hand-off email.${o.tier === 'basic' ? ' <b style="color:#b91c1c;">Basic order — strip the contact form before deploying (contact form is a Standard-plan feature; the free preview shows it for demo purposes only).</b>' : ''}<br>
     Stripe session: ${esc(sessionId)} · ${esc(o.priceBlurb)} subscription active (preview TTL extended to 60 days on payment).
   </div>`;
 }
