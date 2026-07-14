@@ -100,7 +100,7 @@ function cleanHtml(html, baseUrl) {
     const base = new URL(baseUrl);
     h = h.replace(/src="\/(?!\/)/g, `src="${base.origin}/`);
   } catch { /* keep as-is */ }
-  return h.slice(0, 45000);
+  return h.slice(0, 25000);
 }
 
 async function fetchSite(url) {
@@ -147,7 +147,7 @@ no external JS, Google Fonts allowed). Requirements:
   click-to-call and a simple contact form (form can post to "#" for now).
 - Reuse the business's real image URLs where they exist and fit; otherwise use
   tasteful solid-color/gradient blocks — no stock-photo hotlinks.
-- Keep total output compact (target under 700 lines).
+- Keep total output compact (target under 500 lines) — speed matters as much as polish here.
 
 Respond in EXACTLY this format, nothing else:
 <changes>["change 1","change 2",…]</changes>
@@ -186,7 +186,7 @@ async function callClaudeOnce(prompt) {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 12000,
+      max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
