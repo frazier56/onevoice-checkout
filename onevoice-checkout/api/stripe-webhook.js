@@ -34,6 +34,7 @@ const TERM  = {
   annual:  { interval: 'year',  interval_count: 1, months: 12, off: 0.35 },
 };
 const TRIAL_DAYS = 7;
+const FOUNDER100_CODE = 'founder100'; // 100% off -- $0 setup + $0/mo recurring, forever (checkout.js handles the $0 setup)
 
 // Start the recurring plan as a 7-day-trialing subscription off the card saved by
 // the setup-fee checkout. Dynamic price (base + add*(n-1), term discount applied).
@@ -51,7 +52,8 @@ async function createTrialingSubscription(session, order) {
   const t = TERM[order.term]  || TERM.monthly;
   const n = order.count;
   const monthly   = p.base + p.add * (n - 1);
-  const recurring = Math.round(monthly * t.months * (1 - t.off)); // term total, discount applied
+    let recurring = Math.round(monthly * t.months * (1 - t.off)); // term total, discount applied
+     if (order.isFounder100) recurring = 0; // founder100 promo: $0/mo recurring, trial still applies
   const planName  = `OneVoice ${order.plan} - ${n} listing${n > 1 ? 's' : ''} (${order.term})`;
 
   const price = await stripe.prices.create({
@@ -652,6 +654,7 @@ export default async function handler(req, res) {
       email: s.customer_details?.email || m.email || '', name: m.name || s.customer_details?.name || '',
       phone: m.phone || s.customer_details?.phone || '', company: m.company || '', username: m.username || '',
       tier, term, count, listings, plan: tier === 'pro' ? 'Pro' : 'Basic',
+             promo: (m.promo || '').trim().toLowerCase(), isFounder100: (m.promo || '').trim().toLowerCase() === FOUNDER100_CODE,
       amount_today: ((s.amount_total || 0) / 100).toFixed(2),
       stripe_session_id: s.id, stripe_customer: customer,
     };
