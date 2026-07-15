@@ -78,8 +78,16 @@ export default async function handler(req, res) {
     let optLabels = optKeys.map(k => OPT_LABELS[k]);
     if (plan === 'standard' && !optLabels.length) optLabels = ['Contact form', 'Photo & text edits'];
 
-    const origin = ALLOWED_ORIGINS.includes(req.headers.origin || '') ? req.headers.origin : ALLOWED_ORIGINS[1];
-    const backTo = origin + '/oneapp.html';
+    // BUG FIXED Jul 14 (real customer hit this): this used to naively glue the
+    // request's Origin header + '/oneapp.html' — e.g. 'https://www.oneworldlabs.ai'
+    // + '/oneapp.html' = a page that doesn't exist at the domain root (the real
+    // page lives at /onescore-preview/oneapp.html; /oneapp/ is a redirect to it).
+    // A customer landing on that dead path got silently bounced by the hub's own
+    // routing into a different app entirely (OneEvent) with zero payment
+    // confirmation. There is only ONE real canonical return page — stop deriving
+    // it from the request and just point straight at it (same constant used by
+    // oneapp-redesign.js's SITE_URL).
+    const backTo = process.env.ONEAPP_SITE_URL || 'https://www.oneworldlabs.ai/onescore-preview/oneapp.html';
 
     // Billing term: add-ons bill monthly; Basic/Standard bill on a 3-month minimum
     // (quarterly) by default, or annually at 25% off. Advertise the monthly price.

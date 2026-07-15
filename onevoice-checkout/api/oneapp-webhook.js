@@ -101,10 +101,11 @@ function customerBuildHtml(o) {
   const featRow = o.options.length
     ? `<tr><td style="padding:4px 0;color:#5a6677;">Your features</td><td align="right" style="padding:4px 0;font-weight:700;">${esc(o.options.join(', '))}</td></tr>`
     : '';
+  const editDays = o.tier === 'standard' ? 60 : 30;
   const inner = `<tr><td style="padding:30px 22px 6px;">
-    <h1 style="font-size:23px;font-weight:800;color:#0B0F1A;margin:0 0 10px;">You're in, ${esc(o.firstName)} — your new site is being built.</h1>
-    <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Our team is finishing your website right now. <b>Your completed site will land in this inbox within 24 hours</b> — usually much sooner — with your new address and login details.</p>
-    ${o.siteUrl ? `<p style="font-size:14px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Your address: <a href="${esc(o.siteUrl)}" style="color:#0B8C80;font-weight:700;">${esc(o.siteUrl.replace(/^https?:\/\//, ''))}</a></p>` : ''}
+    <h1 style="font-size:23px;font-weight:800;color:#0B0F1A;margin:0 0 10px;">You're in, ${esc(o.firstName)} — here's your new website.</h1>
+    <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Your site is <b>already live</b> at the address below — go ahead and check it out. Our team is still polishing any requests you left us, which finishes within 24 hours, usually much sooner.</p>
+    ${o.siteUrl ? `<p style="margin:0 0 18px;"><a href="${esc(o.siteUrl)}" style="display:inline-block;padding:14px 28px;border-radius:12px;background:#14b8a6;color:#04302b;font-weight:800;text-decoration:none;font-size:15px;">Visit my new site →</a></p><p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:0 0 14px;">${esc(o.siteUrl.replace(/^https?:\/\//, ''))}</p>` : `<p style="font-size:14px;line-height:1.6;color:#3d4753;margin:0 0 14px;">We're finishing setup on your address now — it'll be ready shortly; we'll follow up the moment it's live.</p>`}
     ${previewLink ? `<p style="font-size:14px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Want another look at the design you picked? <a href="${previewLink}" style="color:#0B8C80;font-weight:700;">View your preview →</a></p>` : ''}
   </td></tr>
   <tr><td style="padding:6px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fbfaf6;border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
@@ -116,6 +117,11 @@ function customerBuildHtml(o) {
       ${featRow}
     </table>
     <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Billed ${esc(o.priceBlurb)}. Cancel anytime after the minimum term. Payments are non-refundable once a term starts. ${o.tier === 'standard' ? 'A custom domain is bring-your-own (you buy &amp; own it; we connect and manage it).' : 'Want a custom domain? Available on the Standard plan — just ask and we\'ll switch you over.'} No hidden fees.</div>
+  </td></tr></table></td></tr>
+  <tr><td style="padding:16px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:rgba(20,184,166,.08);border:1px solid rgba(20,184,166,.3);border-radius:12px;"><tr><td style="padding:16px 18px;">
+    <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:8px;">Don't worry if it's not perfect yet</div>
+    <p style="font-size:13.5px;line-height:1.7;color:#3d4753;margin:0 0 12px;">You've got <b>${editDays} days of free changes</b> on the ${esc(o.planLabel.replace('OneApp ', ''))} plan — text, photos, layout tweaks, whatever you want adjusted. Two ways to reach us:</p>
+    <p style="font-size:13.5px;line-height:1.7;color:#3d4753;margin:0;">📞 <b>Call customer service</b> — <a href="tel:+18557700200" style="color:#0B8C80;font-weight:700;">(855) 770-0200</a>, ask for Jennifer<br>📅 <b>Or book a quick call</b> — reply to this email and we'll send you a time that works</p>
   </td></tr></table></td></tr>
   <tr><td style="padding:16px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
     <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:8px;">Want more? Upgrade anytime</div>
@@ -267,7 +273,7 @@ export default async function handler(req, res) {
     if (contactId) {
       const subject = o.isAddon
         ? `We got your add-on request, ${o.firstName} — expect our call`
-        : `Your new website is on the way, ${o.firstName} — delivered within 24 hours`;
+        : `You're live, ${o.firstName} — here's your new website`;
       out.customerEmail = await sendEmail(contactId, subject, o.isAddon ? customerAddonHtml(o) : customerBuildHtml(o));
       out.card = await pipelineCard(contactId, o);
     }
