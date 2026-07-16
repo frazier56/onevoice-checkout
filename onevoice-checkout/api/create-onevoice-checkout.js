@@ -1,33 +1,28 @@
 /* =============================================================================
-   OneVoice — Stripe Checkout (SETUP FEE TODAY + trialing plan)  ·  v3
+   OneVoice — Stripe Checkout (SETUP FEE TODAY + trialing plan)  ·  v4
    -----------------------------------------------------------------------------
    Two-step flow: this fn charges the ONE-TIME SETUP FEE TODAY (mode:'payment')
    and saves the card; the webhook then starts the 7-day-trialing plan.
-   v3 adds a PLAN SUMMARY on the Stripe page (custom_text + richer line item)
-   so the customer sees plan/trial/then-price, not just the setup amount.
-   v3.1 adds a "foundertest" promo code (internal use only): $1 setup fee,
-   $0 recurring plan, so Lee can create test subscriptions on the LIVE Stripe
-   account without real cost. Threaded through metadata.promo to the webhook.
+
+   v4 (Jul 16 2026 repricing) — all plan/setup numbers now come from
+   ../lib/pricing.js (single source of truth). Changes vs v3:
+     • 4 tiers: Light $99/listing · Basic $297(≤4) · Pro $497(5, unlimited calls) · Enterprise=custom
+     • Setup fee is ONE-TIME PER ACCOUNT (not per listing), tiered $149/$249/$349,
+       50%-off summer promo => customer pays half today.
+     • Light/Basic add $1.00 / $0.99 per-call (billed monthly in arrears via a
+       Stripe metered price — set up in the webhook). Pro = unlimited, no meter.
+     • Enterprise has NO self-serve checkout (routed to "call for pricing").
    ⚠️ TEST IN STRIPE TEST MODE FIRST. ENV: STRIPE_SECRET_KEY.
    ============================================================================= */
 
 import Stripe from 'stripe';
 import { kvSet } from '../lib/kv.js';
+import {
+  TERM, planLabel, recurringCents, setupRegularCents, setupTodayCents,
+  perCallCents, hasMeter, isSelfServe, SETUP_PROMO_LABEL,
+} from '../lib/pricing.js';
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-// setup fee (cents) — server-side source of truth
-const SETUP = { first: 6900, add: 4900 };
-// plan price (cents) — keep in sync with the webhook
-const PRICE = { basic: { base: 29700, add: 14900 }, pro: { base: 44900, add: 24900 } };
-const TERM  = {
-  monthly: { months: 1,  off: 0,    word: 'per month' },
-  quarter: { months: 3,  off: 0.25, word: 'every 3 months' },
-  annual:  { months: 12, off: 0.35, word: 'per year' },
-};
-
-// internal test promo — $1 setup, $0 recurring (see stripe-webhook.js)
-const FOUNDER100_CODE = 'founder100'; // 100% off everything -- $0 setup, $0/mo recurring, forever
-const FOUNDER50_CODE = 'founder50';   // 50% off the one-time setup fee only (recurring unaffected)
 
 const CORS = {
   'Access-Control-Allow-Origin': 'https://onevoice.onesocial.ai',
@@ -38,6 +33,10 @@ const CORS = {
 function money(cents) {
   return '$' + (Number(cents || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\.00$/, '');
 }
+function perCallWord(tier) {
+  const c = perCallCents(tier);
+  return c ? '$' + (c / 100).toFixed(2) + ' per answered call' : 'Unlimited calls included';
+}
 
 export default async function handler(req, res) {
   Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
@@ -45,32 +44,30 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')   return res.status(405).json({ error: 'POST only' });
 
   try {
-    const { tier = 'basic', term = 'monthly', count = 1, contact = {}, listings = [], promo = '' } = req.body || {};
-    const n = Math.max(1, parseInt(count) || 1);
-        const promoCode = String(promo || '').trim().toLowerCase();
-         const isFounder100 = promoCode === FOUNDER100_CODE;
-         const isFounder50  = promoCode === FOUNDER50_CODE;
+    const { tier = 'basic', term = 'monthly', count = 1, contact = {}, listings = [] } = req.body || {};
 
-    const p = PRICE[tier] || PRICE.basic;
-    const t = TERM[term] || TERM.monthly;
-    const baseSetup = SETUP.first + SETUP.add * (n - 1);
-         const setup = isFounder100 ? 0 : (isFounder50 ? Math.round(baseSetup / 2) : baseSetup);
-         const recurring = isFounder100 ? 0 : Math.round((p.base + p.add * (n - 1)) * t.months * (1 - t.off)); // term total, discount applied
-    const planLabel = tier === 'pro' ? 'Pro' : 'Basic';
-    const planName  = `OneVoice ${planLabel} — ${n} listing${n > 1 ? 's' : ''}`;
-    const trialEnd  = new Date(Date.now() + 7 * 24 * 3600 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+    // Enterprise (and any unknown tier) has no self-serve checkout.
+    if (!isSelfServe(tier)) {
+      return res.status(400).json({ error: 'enterprise', message: 'Enterprise plans are custom — please contact us for pricing.' });
+    }
+
+    const n = Math.max(1, parseInt(count, 10) || 1);
+    const setupToday = setupTodayCents(tier);       // charged TODAY (50%-off promo)
+    const setupReg   = setupRegularCents(tier);     // struck-through regular
+    const recurring  = recurringCents(tier, n, term);
+    const t          = TERM[term] || TERM.monthly;
+    const label      = planLabel(tier);
+    const planName   = `OneVoice ${label} — ${n} listing${n > 1 ? 's' : ''}`;
+    const trialEnd   = new Date(Date.now() + 7 * 24 * 3600 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+    const callLine   = perCallWord(tier);
 
     // Plan summary shown on the Stripe page (above the pay button)
-    const summary = isFounder100
-             ? `FOUNDER 100 ORDER (internal) — ${planName}. $0 setup, plan set to $0/mo — no charges, ever.`
-             : isFounder50
-             ? (`FOUNDER 50 ORDER (internal) — ${planName}. 50% off setup: ${money(setup)} due today. ` +
-                         `7-day free trial, then ${money(recurring)} ${t.word} begins on ${trialEnd}.`)
-             : (`${planName} · billed ${t.word}. ` +
+    const summary =
+      `${planName} · ${money(recurring)} billed ${t.word}. ${callLine}. ` +
       `7-day free trial — you are NOT charged for the plan today. ` +
-      `After the trial, ${money(recurring)} ${t.word} begins on ${trialEnd}. ` +
-      `The one-time setup fee below (${money(setup)}) is due today and is non-refundable. ` +
-      `Cancel anytime before ${trialEnd} and the plan won't bill.`);
+      `After the trial, billing begins ${trialEnd}. ` +
+      `The one-time setup fee below is ${money(setupToday)} today (${SETUP_PROMO_LABEL}, normally ${money(setupReg)}) and is non-refundable. ` +
+      `Cancel anytime before ${trialEnd} and the plan won't bill.`;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -78,20 +75,16 @@ export default async function handler(req, res) {
       customer_creation: 'always',
       payment_intent_data: {
         setup_future_usage: 'off_session',
-                description: `OneVoice one-time setup fee — ${planName} (${term})${isFounder100 ? ' [FOUNDER 100]' : isFounder50 ? ' [FOUNDER 50]' : ''}`,
+        description: `OneVoice one-time setup fee — ${planName} (${term})`,
       },
       line_items: [{
         quantity: 1,
         price_data: {
           currency: 'usd',
-          unit_amount: setup,
+          unit_amount: setupToday,
           product_data: {
-          name: `OneVoice ${planLabel} — one-time setup (${n} listing${n > 1 ? 's' : ''})${isFounder100 ? ' [FOUNDER 100]' : isFounder50 ? ' [FOUNDER 50]' : ''}`,
-                       description: isFounder100
-                         ? `Founder 100 order — plan set to $0/mo, no future billing.`
-                                      : isFounder50
-                         ? `Founder 50 order — 50% off setup fee. Then ${money(recurring)} ${t.word} starting ${trialEnd}.`
-                                      : `7-day free trial on your plan. Then ${money(recurring)} ${t.word} starting ${trialEnd}. This charge is the one-time setup fee only.`,
+            name: `OneVoice ${label} — one-time setup (${SETUP_PROMO_LABEL})`,
+            description: `Normally ${money(setupReg)}, ${money(setupToday)} today. Then a 7-day free trial on your plan; ${money(recurring)} ${t.word} starting ${trialEnd} (${callLine}). This charge is the one-time setup fee only.`,
           },
         },
       }],
@@ -100,8 +93,10 @@ export default async function handler(req, res) {
         name: contact.name || '', company: contact.company || '', email: contact.email || '',
         phone: contact.phone || '', license: contact.license || '', username: contact.username || '',
         tier, term, listings_count: String(n),
-        setup_cents: String(setup),
-        promo: promoCode,
+        setup_cents: String(setupToday),
+        setup_regular_cents: String(setupReg),
+        per_call_cents: String(perCallCents(tier)),
+        metered: hasMeter(tier) ? '1' : '0',
         listings: JSON.stringify(listings).slice(0, 480),
       },
       success_url: 'https://onevoice.onesocial.ai/welcome?session_id={CHECKOUT_SESSION_ID}',
@@ -111,8 +106,6 @@ export default async function handler(req, res) {
     // AUTOMATION (#49): stash the FULL listings payload in KV keyed by the checkout
     // session id, so the webhook can build a Voice AI agent for listings 2..N.
     // Stripe metadata truncates the listings JSON at 480 chars; KV keeps it all.
-    // Best-effort + graceful: a KV outage (or KV env not set yet) never blocks
-    // checkout — agents 2..N just fall back to whatever survived in metadata.
     try { await kvSet('ov:order:' + session.id, { listings, tier, term, count: n }, { ttlSeconds: 172800 }); } catch {}
 
     return res.status(200).json({ url: session.url });

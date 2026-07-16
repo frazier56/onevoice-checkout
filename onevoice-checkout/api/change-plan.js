@@ -23,26 +23,24 @@
 
 import Stripe from 'stripe';
 import { kvGet, kvSet } from '../lib/kv.js';
+import { TERM, PLANS, planLabel, recurringCents, hasMeter } from '../lib/pricing.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const PRICE = { basic: { base: 29700, add: 14900 }, pro: { base: 44900, add: 24900 } };
-const TERM  = {
-  monthly: { interval: 'month', interval_count: 1, months: 1,  off: 0,    label: 'Monthly' },
-  quarter: { interval: 'month', interval_count: 3, months: 3,  off: 0.25, label: 'Every 3 months (save 25%)' },
-  annual:  { interval: 'year',  interval_count: 1, months: 12, off: 0.35, label: 'Annual (save 35%)' },
-};
-
-function recurringFor(tier, term, count) {
-  const p = PRICE[tier] || PRICE.basic;
-  const t = TERM[term] || TERM.monthly;
-  const monthly = p.base + p.add * (count - 1);
-  return Math.round(monthly * t.months * (1 - t.off));
-}
+// NOTE: pricing.js is the single source of truth. A convenience alias so existing
+// call sites read the same (tier, term, count) order they always did.
+function recurringFor(tier, term, count) { return recurringCents(tier, count, term); }
 function perMonthFor(tier, term, count) {
   const t = TERM[term] || TERM.monthly;
   return Math.round(recurringFor(tier, term, count) / t.months);
 }
+
+// ⚠️ TODO(metering) — when a customer switches TIERS, the per-call metered item must
+// be reconciled: switching to Pro (unlimited) must REMOVE the metered subscription
+// item; switching to Light/Basic must ADD one. Not handled below yet. Safe for now:
+// (a) no real customers yet, (b) metering stays dormant until the post-call trigger
+// is wired (ledger #137), so a mis-set metered item reports $0 regardless. Wire this
+// the same day metering goes live.
 
 async function findPlan(loc) {
   const found = await stripe.customers.search({ query: `metadata['ghl_location_id']:'${loc}'`, limit: 5 });
@@ -81,8 +79,8 @@ export default async function handler(req, res) {
   if (isGet && (body.preview === '1' || body.preview === 1 || body.preview === true)) {
     const pTier = String(body.tier || '').toLowerCase();
     const pTerm = String(body.term || '').toLowerCase();
-    if (!PRICE[pTier] || !TERM[pTerm]) return res.status(200).json({ ok: false, message: 'That plan option isn’t available.' });
-    const tierRank = { basic: 0, pro: 1 }, termRank = { monthly: 0, quarter: 1, annual: 2 };
+    if (!PLANS[pTier] || !TERM[pTerm]) return res.status(200).json({ ok: false, message: 'That plan option isn’t available.' });
+    const tierRank = { light: 0, basic: 1, pro: 2 }, termRank = { monthly: 0, quarter: 1, annual: 2 };
     const isDown = tierRank[pTier] < tierRank[plan.tier] || (pTier === plan.tier && termRank[pTerm] < termRank[plan.term]);
     const trialing = plan.sub.status === 'trialing';
     const recurring = recurringFor(pTier, pTerm, n);
@@ -116,7 +114,7 @@ export default async function handler(req, res) {
       // active upgrade — exact proration from a preview invoice (price reused on confirm)
       try {
         const t = TERM[pTerm];
-        const price = await stripe.prices.create({ currency: 'usd', unit_amount: recurring, recurring: { interval: t.interval, interval_count: t.interval_count }, product_data: { name: `OneVoice ${pTier === 'pro' ? 'Pro' : 'Basic'} - ${n} listing${n > 1 ? 's' : ''} (${pTerm})` } });
+        const price = await stripe.prices.create({ currency: 'usd', unit_amount: recurring, recurring: { interval: t.interval, interval_count: t.interval_count }, product_data: { name: `OneVoice ${planLabel(pTier)} - ${n} listing${n > 1 ? 's' : ''} (${pTerm})` } });
         previewPriceId = price.id;
         const up = await stripe.invoices.retrieveUpcoming({ customer: plan.customerId, subscription: plan.subId, subscription_items: [{ id: plan.sub.items.data[0].id, price: price.id }], subscription_proration_behavior: 'always_invoice' });
         let sum = 0; for (const l of (up.lines && up.lines.data) || []) { if (l.proration) sum += l.amount; }
@@ -133,7 +131,7 @@ export default async function handler(req, res) {
     // Direction of a move relative to the current plan, so the UI can frame it as
     // an upgrade (charge/features up), a downgrade (deferred to renewal), or a
     // billing/prepay change on the same plan.
-    const tierRank = { basic: 0, pro: 1 };
+    const tierRank = { light: 0, basic: 1, pro: 2 };
     const termRank = { monthly: 0, quarter: 1, annual: 2 };
     const direction = (toTier, toTerm) => {
       if (toTier === plan.tier && toTerm === plan.term) return 'current';
@@ -168,9 +166,9 @@ export default async function handler(req, res) {
       renewalDate: periodEnd, renewalHuman,
       current: {
         tier: plan.tier, term: plan.term,
-        tierName: plan.tier === 'pro' ? 'Pro' : 'Basic',
+        tierName: planLabel(plan.tier),
         termLabel: TERM[plan.term].label,
-        label: `${plan.tier === 'pro' ? 'Pro' : 'Basic'} · ${TERM[plan.term].label} · ${n} listing${n > 1 ? 's' : ''}`,
+        label: `${planLabel(plan.tier)} · ${TERM[plan.term].label} · ${n} listing${n > 1 ? 's' : ''}`,
         recurringCents: recurringFor(plan.tier, plan.term, n),
         perMonthCents: perMonthFor(plan.tier, plan.term, n),
       },
@@ -184,13 +182,13 @@ export default async function handler(req, res) {
   // POST — apply the change
   const newTier = String(body.tier || plan.tier).toLowerCase();
   const newTerm = String(body.term || plan.term).toLowerCase();
-  if (!PRICE[newTier] || !TERM[newTerm]) return res.status(200).json({ ok: false, message: 'That plan option isn’t available.' });
+  if (!PLANS[newTier] || !TERM[newTerm]) return res.status(200).json({ ok: false, message: 'That plan option isn’t available.' });
   if (newTier === plan.tier && newTerm === plan.term) return res.status(200).json({ ok: false, message: 'That’s already your current plan.' });
 
   try {
     const t = TERM[newTerm];
     const recurring = recurringFor(newTier, newTerm, n);
-    const planName = `OneVoice ${newTier === 'pro' ? 'Pro' : 'Basic'} - ${n} listing${n > 1 ? 's' : ''} (${newTerm})`;
+    const planName = `OneVoice ${planLabel(newTier)} - ${n} listing${n > 1 ? 's' : ''} (${newTerm})`;
     // Reuse the exact price the confirm screen previewed (so what we charge == what we
     // showed), but only after validating it matches the expected amount + interval.
     let price = null;
@@ -207,7 +205,7 @@ export default async function handler(req, res) {
     });
     const sub = plan.sub;
     const trialing = sub.status === 'trialing';
-    const tierRank = { basic: 0, pro: 1 }, termRank = { monthly: 0, quarter: 1, annual: 2 };
+    const tierRank = { light: 0, basic: 1, pro: 2 }, termRank = { monthly: 0, quarter: 1, annual: 2 };
     const isDowngrade = tierRank[newTier] < tierRank[plan.tier]
       || (newTier === plan.tier && termRank[newTerm] < termRank[plan.term]);
     // UPGRADES apply now and charge the prorated difference immediately (always_invoice),
@@ -245,7 +243,7 @@ export default async function handler(req, res) {
     const periodEnd = plan.sub && plan.sub.current_period_end ? plan.sub.current_period_end : 0;
     const renewalHuman = periodEnd ? new Date(periodEnd * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'your renewal';
     const trialEndHuman = plan.sub && plan.sub.trial_end ? new Date(plan.sub.trial_end * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : renewalHuman;
-    const newName = newTier === 'pro' ? 'Pro' : 'Basic';
+    const newName = planLabel(newTier);
     const toPro = newTier === 'pro' && plan.tier !== 'pro';
     const termWord = TERM[newTerm].label.toLowerCase();
     const totalStr = '$' + (recurring / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });

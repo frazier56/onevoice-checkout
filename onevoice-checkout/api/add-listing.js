@@ -24,25 +24,15 @@
 
 import Stripe from 'stripe';
 import { kvSet } from '../lib/kv.js';
+import { planLabel, recurringCents, extraListingCents } from '../lib/pricing.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// keep in sync with stripe-webhook.js
-const PRICE = { basic: { base: 29700, add: 14900 }, pro: { base: 44900, add: 24900 } };
-const TERM  = {
-  monthly: { interval: 'month', interval_count: 1, months: 1,  off: 0    },
-  quarter: { interval: 'month', interval_count: 3, months: 3,  off: 0.25 },
-  annual:  { interval: 'year',  interval_count: 1, months: 12, off: 0.35 },
-};
+// One-time fee to build + deploy an ADDITIONAL AI agent for a new listing. This is
+// distinct from the account setup fee (which is one-time per account, in pricing.js).
+// TODO(Lee): confirm the add-a-listing fee under the Jul16 model — currently $49.
 const SETUP_CENTS = 4900;
 const PANEL_BASE = process.env.PANEL_RETURN_URL || 'https://assistant.onesocial.ai/v2/location';
-
-function recurringFor(tier, term, count) {
-  const p = PRICE[tier] || PRICE.basic;
-  const t = TERM[term] || TERM.monthly;
-  const monthly = p.base + p.add * (count - 1);
-  return Math.round(monthly * t.months * (1 - t.off));
-}
 
 async function findPlan(loc) {
   // customer whose metadata carries this location
@@ -78,9 +68,9 @@ export default async function handler(req, res) {
   if (!plan.ok) return res.status(200).json({ ok: false, message: plan.reason });
 
   const newCount = plan.count + 1;
-  const addMonthlyCents = (PRICE[plan.tier] || PRICE.basic).add;
-  const newRecurringCents = recurringFor(plan.tier, plan.term, newCount);
-  const planName = `OneVoice ${plan.tier === 'pro' ? 'Pro' : 'Basic'} - ${newCount} listings (${plan.term})`;
+  const addMonthlyCents = extraListingCents(plan.tier);
+  const newRecurringCents = recurringCents(plan.tier, newCount, plan.term);
+  const planName = `OneVoice ${planLabel(plan.tier)} - ${newCount} listings (${plan.term})`;
 
   if (isGet) {
     return res.status(200).json({

@@ -23,21 +23,60 @@
 
 import Stripe from 'stripe';
 import { provisionAgentsForOrder } from '../lib/provisionAgents.js';
+import {
+  TERM, PLANS, planLabel, recurringCents, monthlyCents, perCallCents, hasMeter,
+  METER_EVENT, METER_DISPLAY,
+} from '../lib/pricing.js';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 export const config = { api: { bodyParser: false }, maxDuration: 60 };
 
-// ---- plan pricing (cents) — keep in sync with the setup fee in the checkout fn ----
-const PRICE = { basic: { base: 29700, add: 14900 }, pro: { base: 44900, add: 24900 } };
-const TERM  = {
-  monthly: { interval: 'month', interval_count: 1, months: 1,  off: 0    },
-  quarter: { interval: 'month', interval_count: 3, months: 3,  off: 0.25 },
-  annual:  { interval: 'year',  interval_count: 1, months: 12, off: 0.35 },
-};
+// ---- plan pricing lives in ../lib/pricing.js (single source of truth) ----
 const TRIAL_DAYS = 7;
-const FOUNDER100_CODE = 'founder100'; // 100% off -- $0 setup + $0/mo recurring, forever (checkout.js handles the $0 setup)
+
+// Create-or-reuse the ONE OneVoice call meter (new Stripe Billing Meters API).
+// Idempotent by event_name. Best-effort — callers must tolerate a null return.
+let _meterCache = null;
+async function ensureCallMeter() {
+  if (_meterCache) return _meterCache;
+  try {
+    const list = await stripe.billing.meters.list({ limit: 100 });
+    const found = (list.data || []).find(m => m.event_name === METER_EVENT && m.status !== 'inactive');
+    if (found) { _meterCache = found.id; return _meterCache; }
+    const meter = await stripe.billing.meters.create({
+      display_name: METER_DISPLAY,
+      event_name: METER_EVENT,
+      default_aggregation: { formula: 'sum' },
+      value_settings: { event_payload_key: 'value' },
+      customer_mapping: { type: 'by_id', event_payload_key: 'stripe_customer_id' },
+    });
+    _meterCache = meter.id;
+    return _meterCache;
+  } catch (e) { return null; }
+}
+
+// Build the per-call metered price for a tier+term (interval must match the flat
+// price so both bill on the same invoice). Returns a price id or ''.
+async function meteredCallPrice(tier, t) {
+  if (!hasMeter(tier)) return '';
+  const meterId = await ensureCallMeter();
+  if (!meterId) return '';
+  const cents = perCallCents(tier);
+  try {
+    const price = await stripe.prices.create({
+      currency: 'usd',
+      unit_amount: cents,
+      billing_scheme: 'per_unit',
+      recurring: { interval: t.interval, interval_count: t.interval_count, usage_type: 'metered', meter: meterId },
+      product_data: { name: `OneVoice calls — ${planLabel(tier)} ($${(cents / 100).toFixed(2)}/call)` },
+    });
+    return price.id;
+  } catch (e) { return ''; }
+}
 
 // Start the recurring plan as a 7-day-trialing subscription off the card saved by
-// the setup-fee checkout. Dynamic price (base + add*(n-1), term discount applied).
+// the setup-fee checkout. Flat price + (Light/Basic) a per-call metered price.
+// Pro = flat only (unlimited calls). Trial calls are FREE — the post-call meter
+// endpoint must NOT report usage while the sub is trialing.
 async function createTrialingSubscription(session, order) {
   const customer = session.customer;
   if (!customer) return { ok: false, reason: 'no customer on session' };
@@ -48,27 +87,33 @@ async function createTrialingSubscription(session, order) {
     if (pmId) await stripe.customers.update(customer, { invoice_settings: { default_payment_method: pmId } });
   } catch { /* proceed; Stripe can still bill via the customer default */ }
 
-  const p = PRICE[order.tier] || PRICE.basic;
-  const t = TERM[order.term]  || TERM.monthly;
+  const t = TERM[order.term] || TERM.monthly;
   const n = order.count;
-  const monthly   = p.base + p.add * (n - 1);
-    let recurring = Math.round(monthly * t.months * (1 - t.off)); // term total, discount applied
-     if (order.isFounder100) recurring = 0; // founder100 promo: $0/mo recurring, trial still applies
-  const planName  = `OneVoice ${order.plan} - ${n} listing${n > 1 ? 's' : ''} (${order.term})`;
+  const recurring = recurringCents(order.tier, n, order.term); // flat term total, discount applied
+  const planName  = `OneVoice ${planLabel(order.tier)} - ${n} listing${n > 1 ? 's' : ''} (${order.term})`;
 
   const price = await stripe.prices.create({
     currency: 'usd', unit_amount: recurring,
     recurring: { interval: t.interval, interval_count: t.interval_count },
     product_data: { name: planName },
   });
+
+  const items = [{ price: price.id }];
+  const meteredPriceId = await meteredCallPrice(order.tier, t); // '' for Pro or on failure
+  if (meteredPriceId) items.push({ price: meteredPriceId });
+
   const sub = await stripe.subscriptions.create({
     customer,
-    items: [{ price: price.id }],
+    items,
     trial_period_days: TRIAL_DAYS,
     default_payment_method: pmId || undefined,
-    metadata: { tier: order.tier, term: order.term, listings: String(n), username: order.username || '', source: 'onevoice-checkout' },
+    metadata: {
+      tier: order.tier, term: order.term, listings: String(n), username: order.username || '',
+      per_call_cents: String(perCallCents(order.tier)), metered: meteredPriceId ? '1' : '0',
+      source: 'onevoice-checkout',
+    },
   });
-  return { ok: true, subId: sub.id, priceId: price.id, recurring, trialEnd: sub.trial_end };
+  return { ok: true, subId: sub.id, priceId: price.id, meteredPriceId, recurring, perCallCents: perCallCents(order.tier), trialEnd: sub.trial_end };
 }
 
 const GHL_BASE = 'https://services.leadconnectorhq.com';
@@ -404,7 +449,7 @@ async function upsertOrderContact(order) {
   const r = await ghlPostLoc('/contacts/upsert', {
     locationId: ORDERS_LOCATION_ID, email: order.email, firstName, lastName,
     name: order.name || order.email, phone: order.phone || '', companyName: order.company || '',
-    source: 'OneVoice checkout', tags: ['onevoice-order', `plan-${(order.plan || 'basic').toLowerCase()}`],
+    source: 'OneVoice checkout', tags: ['onevoice-order', `plan-${(order.plan || planLabel(order.tier)).toLowerCase()}`],
   });
   const contactId = r.data?.contact?.id || r.data?.id || '';
   return { ok: r.ok && !!contactId, status: r.status, contactId, reason: r.ok ? '' : (r.data?.message || JSON.stringify(r.data).slice(0, 200)) };
@@ -419,8 +464,7 @@ function buildWelcomeEmailHtml(v) {
   const userExists = !!v.user_exists;
   // What they bought: the recurring plan price + when the free trial converts.
   const tierKey = (v.tier || 'basic'), cnt = parseInt(v.count || 1) || 1;
-  const pr = PRICE[tierKey] || PRICE.basic;
-  const monthlyDollars = ((pr.base + pr.add * (cnt - 1)) / 100).toFixed(0);
+  const monthlyDollars = (monthlyCents(tierKey, cnt) / 100).toFixed(0);
   const recurringDollars = v.recurring_cents ? (v.recurring_cents / 100).toFixed(0) : '';
   const termWord = { monthly: 'month', quarter: 'quarter', annual: 'year' }[v.term] || 'month';
   const isMonthly = (v.term || 'monthly') === 'monthly';
@@ -509,7 +553,7 @@ async function createOrderOpportunity(contactId, order) {
   if (!p.ok) return { ok: false, reason: `pipeline lookup: ${p.reason}` };
   const r = await ghlPostLoc('/opportunities/', {
     pipelineId: p.pipelineId, locationId: ORDERS_LOCATION_ID, pipelineStageId: p.stageId,
-    name: `${order.name || order.email} - OneVoice ${order.plan || 'Basic'} (${order.count || 1})`,
+    name: `${order.name || order.email} - OneVoice ${order.plan || planLabel(order.tier)} (${order.count || 1})`,
     status: 'open', contactId, monetaryValue: Number(order.amount_today || 0),
   });
   return { ok: r.ok, status: r.status, opportunityId: r.data?.opportunity?.id || r.data?.id || '', pipeline: p.pipelineName, stage: p.stageName, reason: r.ok ? '' : (r.data?.message || JSON.stringify(r.data).slice(0, 200)) };
@@ -555,18 +599,18 @@ async function fulfillAddListing(s) {
     if (!subId) { out.billing.reason = 'no subscription id'; }
     else {
       const sub = await stripe.subscriptions.retrieve(subId);
-      const pt = PRICE[tier] || PRICE.basic;
       const t = TERM[term] || TERM.monthly;
-      const monthly = pt.base + pt.add * (newCount - 1);
-      const recurring = Math.round(monthly * t.months * (1 - t.off));
-      const planName = `OneVoice ${tier === 'pro' ? 'Pro' : 'Basic'} - ${newCount} listings (${term})`;
+      const recurring = recurringCents(tier, newCount, term);   // flat term total (per-call item untouched)
+      const planName = `OneVoice ${planLabel(tier)} - ${newCount} listings (${term})`;
       const price = await stripe.prices.create({
         currency: 'usd', unit_amount: recurring,
         recurring: { interval: t.interval, interval_count: t.interval_count },
         product_data: { name: planName },
       });
+      // Update ONLY the flat plan item; leave any per-call metered item as-is.
+      const flatItem = (sub.items.data || []).find(i => i.price && (!i.price.recurring || i.price.recurring.usage_type !== 'metered')) || sub.items.data[0];
       const upd = await stripe.subscriptions.update(subId, {
-        items: [{ id: sub.items.data[0].id, price: price.id }],
+        items: [{ id: flatItem.id, price: price.id }],
         proration_behavior: 'none',
         metadata: { ...(sub.metadata || {}), listings: String(newCount) },
       });
@@ -654,7 +698,6 @@ export default async function handler(req, res) {
       email: s.customer_details?.email || m.email || '', name: m.name || s.customer_details?.name || '',
       phone: m.phone || s.customer_details?.phone || '', company: m.company || '', username: m.username || '',
       tier, term, count, listings, plan: tier === 'pro' ? 'Pro' : 'Basic',
-             promo: (m.promo || '').trim().toLowerCase(), isFounder100: (m.promo || '').trim().toLowerCase() === FOUNDER100_CODE,
       amount_today: ((s.amount_total || 0) / 100).toFixed(2),
       stripe_session_id: s.id, stripe_customer: customer,
     };
