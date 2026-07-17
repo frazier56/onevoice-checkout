@@ -19,7 +19,7 @@
 export const PLANS = {
   light: { base: 9900,  extra: 9900, included: 1, perCall: 99,  label: 'Light', unlimited: false },
   basic: { base: 29700, extra: 9900, included: 4, perCall: 99,  label: 'Basic', unlimited: false },
-  pro:   { base: 49700, extra: 9900, included: 5, perCall: 0,   label: 'Pro',   unlimited: true  },
+  pro:   { base: 49700, extra: 9900, included: 6, perCall: 0,   label: 'Pro',   unlimited: true  },
 };
 
 // One-time setup fee (REGULAR, cents) per tier — NOT per listing.
