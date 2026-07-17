@@ -17,15 +17,16 @@
 
 // Monthly flat plan price + extra-listing rules (cents)
 export const PLANS = {
-  light: { base: 9900,  extra: 9900, included: 1, perCall: 100, label: 'Light', unlimited: false },
+  light: { base: 9900,  extra: 9900, included: 1, perCall: 99,  label: 'Light', unlimited: false },
   basic: { base: 29700, extra: 9900, included: 4, perCall: 99,  label: 'Basic', unlimited: false },
   pro:   { base: 49700, extra: 9900, included: 5, perCall: 0,   label: 'Pro',   unlimited: true  },
 };
 
 // One-time setup fee (REGULAR, cents) per tier — NOT per listing.
 export const SETUP = { light: 14900, basic: 24900, pro: 34900 };
-export const SETUP_PROMO = 0.5;            // 50% off, summer / limited-time
+export const SETUP_PROMO = 0.5;            // 50% off, summer / limited-time — applies to Basic + Pro only
 export const SETUP_PROMO_LABEL = '50% off — limited-time summer offer';
+export const SETUP_PROMO_TIERS = ['basic', 'pro']; // Light setup is NOT discounted (flat $149)
 
 export const TERM = {
   monthly: { months: 1,  off: 0,    word: 'per month',      label: 'Monthly',                     interval: 'month', interval_count: 1 },
@@ -58,7 +59,9 @@ export function recurringCents(tier, n, term) {
 }
 
 export function setupRegularCents(tier) { return SETUP[tierKey(tier)] || SETUP.basic; }
-export function setupTodayCents(tier)   { return Math.round(setupRegularCents(tier) * SETUP_PROMO); }
+// Light setup is NOT discounted (flat $149); Basic + Pro get the 50% summer promo.
+export function setupHasPromo(tier)     { return SETUP_PROMO_TIERS.includes(tierKey(tier)); }
+export function setupTodayCents(tier)   { const k = tierKey(tier); return setupHasPromo(k) ? Math.round(setupRegularCents(k) * SETUP_PROMO) : setupRegularCents(k); }
 
 export function extraListingCents(tier) { return (PLANS[tierKey(tier)] || PLANS.basic).extra; }
 export function includedListings(tier)  { return (PLANS[tierKey(tier)] || PLANS.basic).included; }
