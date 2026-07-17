@@ -31,9 +31,9 @@ const SUPPORT_EMAIL = 'contact@oneworldlabs.ai';
 const BASE_URL = 'https://onevoice-checkout.vercel.app';
 
 const PLAN_INFO = {
-  basic:    { label: 'OneApp Basic',           price: 97,  blurb: '$97/month' },
-  standard: { label: 'OneApp Standard',        price: 197, blurb: '$197/month' },
-  addon:    { label: 'OneApp Add-on Services', price: 29,  blurb: '$29/month' },
+  basic:    { label: 'OnePage Basic',           price: 97,  blurb: '$97/month' },
+  standard: { label: 'OnePage Standard',        price: 197, blurb: '$197/month' },
+  addon:    { label: 'OnePage Add-on Services', price: 29,  blurb: '$29/month' },
 };
 
 function readRawBody(req) {
@@ -88,10 +88,10 @@ async function reserveSlug(base, previewId, ownerEmail) {
 function emailWrap(inner) {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;margin:0;padding:0;"><tr><td align="center" style="padding:0;">
   <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
-    <tr><td align="center" style="background:#0B0F1A;padding:26px;"><div style="font-size:26px;font-weight:800;color:#ffffff;"><span style="color:#14b8a6;">One</span>App</div><div style="margin-top:4px;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#8a93a3;">Your Business. One App.</div></td></tr>
+    <tr><td align="center" style="background:#0B0F1A;padding:26px;"><div style="font-size:26px;font-weight:800;color:#ffffff;"><span style="color:#14b8a6;">One</span>Page</div><div style="margin-top:4px;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#8a93a3;">Your Business. One Page.</div></td></tr>
     ${inner}
     <tr><td style="padding:18px 22px 10px;"><p style="font-size:14px;line-height:1.6;color:#5a6677;margin:0;">Questions? Reply to this email or reach <a href="mailto:${SUPPORT_EMAIL}" style="color:#0B8C80;font-weight:600;">${SUPPORT_EMAIL}</a>.</p></td></tr>
-    <tr><td align="center" style="padding:22px 24px;border-top:1px solid #ece8dd;"><p style="font-size:12px;color:#8a93a3;line-height:1.7;margin:0;">OneApp, a One World Labs company<br>1111b S Governors Ave, Dover, DE 19904</p></td></tr>
+    <tr><td align="center" style="padding:22px 24px;border-top:1px solid #ece8dd;"><p style="font-size:12px;color:#8a93a3;line-height:1.7;margin:0;">OnePage, a One World Labs company<br>1111b S Governors Ave, Dover, DE 19904</p></td></tr>
   </table></td></tr></table>`;
 }
 
@@ -120,7 +120,7 @@ function customerBuildHtml(o) {
   </td></tr></table></td></tr>
   <tr><td style="padding:16px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:rgba(20,184,166,.08);border:1px solid rgba(20,184,166,.3);border-radius:12px;"><tr><td style="padding:16px 18px;">
     <div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:8px;">Don't worry if it's not perfect yet</div>
-    <p style="font-size:13.5px;line-height:1.7;color:#3d4753;margin:0 0 12px;">You've got <b>${editDays} days of free changes</b> on the ${esc(o.planLabel.replace('OneApp ', ''))} plan — text, photos, layout tweaks, whatever you want adjusted. Two ways to reach us:</p>
+    <p style="font-size:13.5px;line-height:1.7;color:#3d4753;margin:0 0 12px;">You've got <b>${editDays} days of free changes</b> on the ${esc(o.planLabel.replace('OnePage ', ''))} plan — text, photos, layout tweaks, whatever you want adjusted. Two ways to reach us:</p>
     <p style="font-size:13.5px;line-height:1.7;color:#3d4753;margin:0;">📞 <b>Call customer service</b> — <a href="tel:+18557700200" style="color:#0B8C80;font-weight:700;">(855) 770-0200</a>, ask for Jennifer<br>📅 <b>Or book a quick call</b> — reply to this email and we'll send you a time that works</p>
   </td></tr></table></td></tr>
   <tr><td style="padding:16px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
@@ -194,7 +194,7 @@ async function pipelineCard(contactId, o) {
   const stages = (p.stages || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
   const title = o.isAddon
     ? `OneApp Add-on: ${o.company || o.name} — $29/mo (call to scope)`
-    : `OneApp ${o.planLabel.replace('OneApp ', '')}: ${o.company || o.name} — ${o.priceBlurb} (build 24h)`;
+    : `OnePage ${o.planLabel.replace('OnePage ', '')}: ${o.company || o.name} — ${o.priceBlurb} (build 24h)`;
   return ghl('POST', '/opportunities/', {
     pipelineId: p.id, locationId: ORDERS_LOCATION_ID, pipelineStageId: stages[0]?.id || '',
     name: title, status: 'open', contactId, monetaryValue: o.price,

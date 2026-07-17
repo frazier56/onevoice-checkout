@@ -71,7 +71,7 @@ async function sendPreviewEmail(email, id, changes) {
     const changeRows = (changes || []).slice(0, 6).map(c => `<li style="margin:4px 0;">${escHtml(c)}</li>`).join('');
     const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
-        <tr><td align="center" style="background:#0B0F1A;padding:26px;"><div style="font-size:26px;font-weight:800;color:#ffffff;"><span style="color:#14b8a6;">One</span>App</div></td></tr>
+        <tr><td align="center" style="background:#0B0F1A;padding:26px;"><div style="font-size:26px;font-weight:800;color:#ffffff;"><span style="color:#14b8a6;">One</span>Page</div></td></tr>
         <tr><td style="padding:34px 26px 8px;">
           <h1 style="font-size:23px;font-weight:800;color:#0B0F1A;margin:0 0 10px;line-height:1.3;">Your free website preview is ready 🎉</h1>
           <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 22px;">Our AI just built your site. It's saved for <b>48 hours</b> — come back anytime to look it over, tweak it, or make it live.</p>
@@ -83,7 +83,7 @@ async function sendPreviewEmail(email, id, changes) {
           ${changeRows ? `<div style="font-size:12px;font-weight:800;letter-spacing:.8px;color:#0B8C80;text-transform:uppercase;margin-bottom:8px;">What we built</div><ul style="font-size:13.5px;color:#3d4753;padding-left:18px;margin:0 0 14px;">${changeRows}</ul>` : ''}
           <p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:14px 0 0;">Didn't request this? You can safely ignore this email.</p>
         </td></tr>
-        <tr><td style="padding:18px 22px;"><p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:0;">Questions? Reply to this email or reach <a href="mailto:${SUPPORT_EMAIL}" style="color:#0B8C80;font-weight:600;">${SUPPORT_EMAIL}</a>.<br>OneApp, a One World Labs company.</p></td></tr>
+        <tr><td style="padding:18px 22px;"><p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:0;">Questions? Reply to this email or reach <a href="mailto:${SUPPORT_EMAIL}" style="color:#0B8C80;font-weight:600;">${SUPPORT_EMAIL}</a>.<br>OnePage, a One World Labs company.</p></td></tr>
       </table></td></tr></table>`;
     const cr = await ghl('POST', '/contacts/upsert', { locationId: ORDERS_LOCATION_ID, email, firstName: first, source: 'OneApp free preview', tags: ['oneapp-preview-lead'] });
     const contactId = cr.data?.contact?.id || cr.data?.id || '';

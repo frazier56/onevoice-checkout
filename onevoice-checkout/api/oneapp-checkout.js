@@ -18,11 +18,11 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // server-side source of truth — never trust client amounts
 const PLANS = {
-  basic:    { cents: 9700,  name: 'OneApp Basic — Managed Hosting',
+  basic:    { cents: 9700,  name: 'OnePage Basic — Managed Hosting',
               desc: 'Free AI-built one-page website · managed hosting, SSL, free yourname.oneworldlabs.site address, 48-hour support · $97/month, cancel anytime' },
-  standard: { cents: 19700, name: 'OneApp Standard — Managed Hosting',
+  standard: { cents: 19700, name: 'OnePage Standard — Managed Hosting',
               desc: 'Free AI-built website + contact form · hosting, custom domain migration, security · $197/month, cancel anytime' },
-  addon:    { cents: 2900,  name: 'OneApp Add-on Services',
+  addon:    { cents: 2900,  name: 'OnePage Add-on Services',
               desc: '$29/month to activate your selected upgrades — exact plan scoped with you on a quick call' },
 };
 
@@ -105,7 +105,7 @@ export default async function handler(req, res) {
     }
 
     const summary = plan === 'addon'
-      ? 'OneApp Add-on Services — $29/month to activate. This reserves your add-ons; we scope and quote the exact plan with you on a quick call. Cancel anytime.'
+      ? 'OnePage Add-on Services — $29/month to activate. This reserves your add-ons; we scope and quote the exact plan with you on a quick call. Cancel anytime.'
       : `${p.name} — $${(monthly/100).toFixed(0)}/month, billed ${billNote}. Your website design is FREE; this covers managed hosting, security, and maintenance` +
         (optLabels.length ? `, plus your features (${optLabels.join(', ')})` : '') +
         (plan === 'standard'

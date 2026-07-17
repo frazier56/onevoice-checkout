@@ -42,13 +42,13 @@ function page(title, inner) {
 </body></html>`;
 }
 
-const THANKS = page('Message sent', `<div style="font-size:26px;font-weight:800;"><span style="color:#0d9488;">One</span>App</div>
+const THANKS = page('Message sent', `<div style="font-size:26px;font-weight:800;"><span style="color:#0d9488;">One</span>Page</div>
   <p style="margin-top:14px;font-size:16px;font-weight:700;color:#111827;">Thanks — your message was sent.</p>
   <p style="margin-top:8px;font-size:14px;color:#6b7280;">The owner will get back to you soon.</p>
   <p style="margin-top:20px;"><a href="javascript:history.back()" style="color:#0d9488;font-weight:700;text-decoration:none;">&larr; Back to the site</a></p>`);
 
 function errPage(msg) {
-  return page('Message not sent', `<div style="font-size:26px;font-weight:800;"><span style="color:#0d9488;">One</span>App</div>
+  return page('Message not sent', `<div style="font-size:26px;font-weight:800;"><span style="color:#0d9488;">One</span>Page</div>
   <p style="margin-top:14px;font-size:16px;font-weight:700;color:#b91c1c;">${esc(msg)}</p>
   <p style="margin-top:8px;font-size:14px;color:#6b7280;">Please go back and try again, or email <a href="mailto:${SUPPORT_EMAIL}" style="color:#0d9488;">${SUPPORT_EMAIL}</a> directly.</p>`);
 }

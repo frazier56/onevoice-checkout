@@ -14,9 +14,9 @@
 import { kvGet } from '../lib/kv.js';
 
 const GONE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Site not found — OneApp</title></head>
+<title>Site not found — OnePage</title></head>
 <body style="margin:0;background:#FAFAF8;font-family:Inter,-apple-system,'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;color:#111827;">
-<div style="padding:32px;"><div style="font-size:26px;font-weight:800;"><span style="color:#0d9488;">One</span>App</div>
+<div style="padding:32px;"><div style="font-size:26px;font-weight:800;"><span style="color:#0d9488;">One</span>Page</div>
 <p style="margin-top:14px;font-size:15px;color:#6b7280;max-width:26rem;">We couldn't find a site at this address.
 Own this address? Email <a href="mailto:contact@oneworldlabs.ai" style="color:#0d9488;font-weight:700;">contact@oneworldlabs.ai</a>.</p></div>
 </body></html>`;

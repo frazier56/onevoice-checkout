@@ -46,10 +46,10 @@ function usd(cents) { return '$' + (Number(cents || 0) / 100).toLocaleString('en
 function upgradeEmailHtml(firstName, label, oldQ, newQ, nextDate) {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center">
   <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
-    <tr><td align="center" style="background:#0B0F1A;padding:26px;"><div style="font-size:26px;font-weight:800;color:#ffffff;"><span style="color:#14b8a6;">One</span>App</div></td></tr>
+    <tr><td align="center" style="background:#0B0F1A;padding:26px;"><div style="font-size:26px;font-weight:800;color:#ffffff;"><span style="color:#14b8a6;">One</span>Page</div></td></tr>
     <tr><td style="padding:30px 22px 6px;">
       <h1 style="font-size:22px;font-weight:800;color:#0B0F1A;margin:0 0 10px;">Your plan has been upgraded, ${esc(firstName)}.</h1>
-      <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 14px;">As discussed with our team, your OneApp subscription is now <b>${esc(label)}</b>. Nothing is charged today — the new amount starts on your next billing date.</p>
+      <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 14px;">As discussed with our team, your OnePage subscription is now <b>${esc(label)}</b>. Nothing is charged today — the new amount starts on your next billing date.</p>
     </td></tr>
     <tr><td style="padding:6px 22px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fbfaf6;border:1px solid #ece8dd;border-radius:12px;"><tr><td style="padding:16px 18px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#1A2233;">
@@ -59,7 +59,7 @@ function upgradeEmailHtml(firstName, label, oldQ, newQ, nextDate) {
       </table>
       <div style="font-size:12.5px;color:#8a93a3;margin-top:10px;">Same terms as always: cancel anytime and you won't be billed again.</div>
     </td></tr></table></td></tr>
-    <tr><td style="padding:18px 22px;"><p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:0;">Didn't expect this change? Reply to this email or reach <a href="mailto:${SUPPORT_EMAIL}" style="color:#0B8C80;font-weight:600;">${SUPPORT_EMAIL}</a> and we'll sort it out immediately.<br>OneApp, a One World Labs company.</p></td></tr>
+    <tr><td style="padding:18px 22px;"><p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:0;">Didn't expect this change? Reply to this email or reach <a href="mailto:${SUPPORT_EMAIL}" style="color:#0B8C80;font-weight:600;">${SUPPORT_EMAIL}</a> and we'll sort it out immediately.<br>OnePage, a One World Labs company.</p></td></tr>
   </table></td></tr></table>`;
 }
 
@@ -125,7 +125,7 @@ export default async function handler(req, res) {
         id: target.itemId,
         price_data: {
           currency: 'usd',
-          product_data: { name: `OneApp Managed Hosting — ${label}` },
+          product_data: { name: `OnePage Managed Hosting — ${label}` },
           unit_amount: newQuarterCents,
           recurring: { interval: 'month', interval_count: 3 },
         },
@@ -134,7 +134,7 @@ export default async function handler(req, res) {
       metadata: { product: 'oneapp', plan_label: label, upgraded_at: new Date().toISOString() },
     });
 
-    const custEmail = await sendGhlEmail(email, target.name, `Your OneApp plan is now ${label}`,
+    const custEmail = await sendGhlEmail(email, target.name, `Your OnePage plan is now ${label}`,
       upgradeEmailHtml((target.name || 'there').split(' ')[0], label, target.quarterCents, newQuarterCents, target.nextBill));
     const founderNote = await sendGhlEmail(FOUNDER_EMAIL, 'Lee Frazier', `OneApp upgrade APPLIED: ${email} → ${usd(newQuarterCents)}/qtr`,
       `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;">${esc(email)} moved from ${usd(target.quarterCents)}/qtr to <b>${usd(newQuarterCents)}/qtr</b> (${usd(monthly * 100)}/mo, "${esc(label)}"). Effective ${esc(target.nextBill)}, nothing charged today. Sub: ${esc(target.subId)}</div>`);

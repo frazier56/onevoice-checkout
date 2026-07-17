@@ -48,13 +48,13 @@ function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').repla
 function customerHtml(firstName, features, notes) {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center">
   <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
-    <tr><td align="center" style="background:#0B0F1A;padding:26px;"><div style="font-size:26px;font-weight:800;color:#ffffff;"><span style="color:#14b8a6;">One</span>App</div></td></tr>
+    <tr><td align="center" style="background:#0B0F1A;padding:26px;"><div style="font-size:26px;font-weight:800;color:#ffffff;"><span style="color:#14b8a6;">One</span>Page</div></td></tr>
     <tr><td style="padding:30px 22px 6px;">
       <h1 style="font-size:22px;font-weight:800;color:#0B0F1A;margin:0 0 10px;">Got it, ${esc(firstName)} — we'll call you back.</h1>
       <p style="font-size:15px;line-height:1.6;color:#3d4753;margin:0 0 14px;">Your upgrade request is in. A member of our team will <b>call you within 1 business day</b> to make sure we understand exactly what you want, then give you a straight custom quote — no obligation.</p>
       <p style="font-size:14px;line-height:1.7;color:#3d4753;margin:0;"><b>You asked about:</b> ${esc(features.join(', ') || 'a custom upgrade')}${notes ? `<br><b>Your notes:</b> ${esc(notes)}` : ''}</p>
     </td></tr>
-    <tr><td style="padding:18px 22px;"><p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:0;">Questions meanwhile? Reply to this email or reach <a href="mailto:${SUPPORT_EMAIL}" style="color:#0B8C80;font-weight:600;">${SUPPORT_EMAIL}</a>.<br>OneApp, a One World Labs company.</p></td></tr>
+    <tr><td style="padding:18px 22px;"><p style="font-size:13px;line-height:1.6;color:#8a93a3;margin:0;">Questions meanwhile? Reply to this email or reach <a href="mailto:${SUPPORT_EMAIL}" style="color:#0B8C80;font-weight:600;">${SUPPORT_EMAIL}</a>.<br>OnePage, a One World Labs company.</p></td></tr>
   </table></td></tr></table>`;
 }
 
