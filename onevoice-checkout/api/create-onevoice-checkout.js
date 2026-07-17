@@ -24,11 +24,19 @@ import {
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const CORS = {
-  'Access-Control-Allow-Origin': 'https://onevoice.onesocial.ai',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+// Funnel now lives at oneworldlabs.ai/onevoice/get-started/ (Pages); keep the old
+// GHL origin allow-listed for backward compat.
+const ALLOWED_ORIGINS = [
+  'https://oneworldlabs.ai', 'https://www.oneworldlabs.ai', 'https://onevoice.onesocial.ai',
+];
+function corsHeaders(req) {
+  const o = (req.headers && req.headers.origin) || '';
+  return {
+    'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(o) ? o : 'https://www.oneworldlabs.ai',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+}
 
 function money(cents) {
   return '$' + (Number(cents || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\.00$/, '');
@@ -39,7 +47,7 @@ function perCallWord(tier) {
 }
 
 export default async function handler(req, res) {
-  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  Object.entries(corsHeaders(req)).forEach(([k, v]) => res.setHeader(k, v));
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST')   return res.status(405).json({ error: 'POST only' });
 
@@ -104,7 +112,7 @@ export default async function handler(req, res) {
         listings: JSON.stringify(listings).slice(0, 480),
       },
       success_url: 'https://onevoice.onesocial.ai/welcome?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url:  'https://onevoice.onesocial.ai/',
+      cancel_url:  'https://oneworldlabs.ai/onevoice/',
     });
 
     // AUTOMATION (#49): stash the FULL listings payload in KV keyed by the checkout
