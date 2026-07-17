@@ -154,7 +154,7 @@ export default async function handler(req, res) {
         });
         r.retried = true;
       }
-      return { ok: r.ok, status: r.status, retried: !!r.retried };
+      return { ok: r.ok, status: r.status, retried: !!r.retried, reason: r.ok ? '' : String(r.data?.message || JSON.stringify(r.data || {})).slice(0, 200) };
     }
 
     if (action === 'link') {
