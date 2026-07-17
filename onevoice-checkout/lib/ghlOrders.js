@@ -165,7 +165,7 @@ function buildWelcomeEmailHtml(v) {
         </table>
       </td></tr>
       <tr><td style="padding:18px 22px 10px;">
-        <p style="font-size:14px;line-height:1.6;color:#5a6677;margin:0;">Questions? Reply to this email, call or text us at (217) 290-9970, or reach <a href="mailto:support.onevoice@onesocial.ai" style="color:#0B8C80;font-weight:600;">support.onevoice@onesocial.ai</a>. Welcome aboard.</p>
+        <p style="font-size:14px;line-height:1.6;color:#5a6677;margin:0;">Questions? Reply to this email, call us at (855) 770-0200, or reach <a href="mailto:support@oneworldlabs.ai" style="color:#0B8C80;font-weight:600;">support@oneworldlabs.ai</a>. Welcome aboard.</p>
       </td></tr>
       <tr><td align="center" style="padding:22px 24px;border-top:1px solid #ece8dd;">
         <p style="font-size:12px;color:#8a93a3;line-height:1.7;margin:0;">OneVoice, a OneSocial company &middot; OneSocial AI, LLC<br>1111b S Governors Ave, Dover, DE 19904</p>
