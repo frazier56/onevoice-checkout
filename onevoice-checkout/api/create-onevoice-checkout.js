@@ -67,7 +67,7 @@ export default async function handler(req, res) {
     const label      = planLabel(tier);
     const promo      = setupHasPromo(tier);   // Light = no promo (flat setup); Basic/Pro = 50% off
     const promoCode  = String((req.body && req.body.promo) || '').trim();
-    const isFounder  = /^founder/i.test(promoCode);          // founder* codes -> $1 today, plan on trial
+    const isFounder  = ['founder100','founder50','foundertest'].includes(promoCode.toLowerCase()); // exact founder codes -> $1 today, plan on trial
     const setupCharge= isFounder ? 100 : setupToday;         // amount actually charged today
     const planName   = `OneVoice ${label} — ${n} listing${n > 1 ? 's' : ''}`;
     const trialEnd   = new Date(Date.now() + 7 * 24 * 3600 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
