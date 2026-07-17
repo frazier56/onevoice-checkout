@@ -158,15 +158,17 @@ export default async function handler(req, res) {
     });
     out.steps.notifyAgent = { ok: notify.data?.ok, status: notify.status };
 
-    // 2) buyer confirmation only if a showing got booked
-    if (booked) {
+    // 2) ALWAYS text the buyer their callback info (when we captured their number);
+    //    the "You're set for ..." line only appears when a showing was actually booked.
+    if (callerPhone) {
       const buyer = await post(`${SMS_HUB_URL}?k=${KEY}`, {
-        action: 'text-buyer', buyerPhone: callerPhone, buyerName, agentName, agentPhone, street, showingTime,
+        action: 'text-buyer', buyerPhone: callerPhone, buyerName, agentName, agentPhone, street,
+        showingTime: booked ? showingTime : '',
       });
       out.steps.textBuyer = { ok: buyer.data?.ok, status: buyer.status };
     }
 
-    out.ok = !!out.steps.notifyAgent.ok && (!booked || !!out.steps.textBuyer?.ok);
+    out.ok = !!out.steps.notifyAgent.ok && (!callerPhone || !!out.steps.textBuyer?.ok);
     return res.status(200).json(out);
   } catch (e) {
     return res.status(200).json({ ok: false, error: e.message });
