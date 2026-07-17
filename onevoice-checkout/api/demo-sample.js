@@ -144,14 +144,23 @@ export default async function handler(req, res) {
     const contactId = up.data?.contact?.id || up.data?.id || '';
     if (!contactId) return res.status(200).json({ ...out, message: 'contact upsert failed: ' + (up.data?.message || up.status) });
 
+    // SMS send: contact-routed first (proven 201), explicit to/from retry as fallback
+    async function sendSms(message) {
+      let r = await ghl('POST', '/conversations/messages', { body: { type: 'SMS', contactId, message }, version: V_CONV });
+      if (!r.ok) {
+        r = await ghl('POST', '/conversations/messages', {
+          body: { type: 'SMS', contactId, toNumber: phone, fromNumber: process.env.DEMO_SMS_FROM || '+12172909970', message },
+          version: V_CONV,
+        });
+        r.retried = true;
+      }
+      return { ok: r.ok, status: r.status, retried: !!r.retried };
+    }
+
     if (action === 'link') {
       // get-started link, after they say they're interested
       if (phone) {
-        const r = await ghl('POST', '/conversations/messages', {
-          body: { type: 'SMS', contactId, toNumber: phone, ...(process.env.DEMO_SMS_FROM ? { fromNumber: process.env.DEMO_SMS_FROM } : {}), message: `Here's that link — everything you just experienced, answering YOUR calls 24/7: ${GET_STARTED_URL}  Questions anytime: (855) 770-0200. — Ava at OneVoice` },
-          version: V_CONV,
-        });
-        out.sms = { ok: r.ok, status: r.status };
+        out.sms = await sendSms(`Here's that link — everything you just experienced, answering YOUR calls 24/7: ${GET_STARTED_URL}  Questions anytime: (855) 770-0200. — Ava at OneVoice`);
       }
       out.ok = !!(out.sms && out.sms.ok);
       return res.status(200).json(out);
@@ -160,11 +169,7 @@ export default async function handler(req, res) {
     // action === 'demo': personalized sample package
     const sample = isAgent ? realtorSample({ name, address, price }) : serviceSample({ name });
     if (phone) {
-      const r = await ghl('POST', '/conversations/messages', {
-        body: { type: 'SMS', contactId, toNumber: phone, ...(process.env.DEMO_SMS_FROM ? { fromNumber: process.env.DEMO_SMS_FROM } : {}), message: sample.smsToCaller },
-        version: V_CONV,
-      });
-      out.sms = { ok: r.ok, status: r.status };
+      out.sms = await sendSms(sample.smsToCaller);
     }
     if (email) {
       const body = { type: 'Email', contactId, subject: sample.subject, html: sample.html };
