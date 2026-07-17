@@ -66,12 +66,17 @@ export default async function handler(req, res) {
     const t          = TERM[term] || TERM.monthly;
     const label      = planLabel(tier);
     const promo      = setupHasPromo(tier);   // Light = no promo (flat setup); Basic/Pro = 50% off
+    const promoCode  = String((req.body && req.body.promo) || '').trim();
+    const isFounder  = /^founder/i.test(promoCode);          // founder* codes -> $1 today, plan on trial
+    const setupCharge= isFounder ? 100 : setupToday;         // amount actually charged today
     const planName   = `OneVoice ${label} — ${n} listing${n > 1 ? 's' : ''}`;
     const trialEnd   = new Date(Date.now() + 7 * 24 * 3600 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
     const callLine   = perCallWord(tier);
-    const setupSentence = promo
-      ? `The one-time setup fee below is ${money(setupToday)} today (${SETUP_PROMO_LABEL}, normally ${money(setupReg)}) and is non-refundable. `
-      : `The one-time setup fee below is ${money(setupToday)} and is non-refundable. `;
+    const setupSentence = isFounder
+      ? `Founder test — ${money(setupCharge)} today, and the plan won't bill (cancel before the trial ends). `
+      : promo
+        ? `The one-time setup fee below is ${money(setupToday)} today (${SETUP_PROMO_LABEL}, normally ${money(setupReg)}) and is non-refundable. `
+        : `The one-time setup fee below is ${money(setupToday)} and is non-refundable. `;
 
     // Plan summary shown on the Stripe page (above the pay button)
     const summary =
@@ -93,26 +98,27 @@ export default async function handler(req, res) {
         quantity: 1,
         price_data: {
           currency: 'usd',
-          unit_amount: setupToday,
+          unit_amount: setupCharge,
           product_data: {
-            name: promo ? `OneVoice ${label} — one-time setup (${SETUP_PROMO_LABEL})` : `OneVoice ${label} — one-time setup`,
-            description: (promo ? `Normally ${money(setupReg)}, ${money(setupToday)} today. ` : `${money(setupToday)} one-time. `) + `Then a 7-day free trial on your plan; ${money(recurring)} ${t.word} starting ${trialEnd} (${callLine}). This charge is the one-time setup fee only.`,
+            name: isFounder ? `OneVoice ${label} — founder test setup` : (promo ? `OneVoice ${label} — one-time setup (${SETUP_PROMO_LABEL})` : `OneVoice ${label} — one-time setup`),
+            description: isFounder ? `${money(setupCharge)} founder test. Then a 7-day free trial; the plan won't bill — cancel before it ends.` : ((promo ? `Normally ${money(setupReg)}, ${money(setupToday)} today. ` : `${money(setupToday)} one-time. `) + `Then a 7-day free trial on your plan; ${money(recurring)} ${t.word} starting ${trialEnd} (${callLine}). This charge is the one-time setup fee only.`),
           },
         },
       }],
       custom_text: { submit: { message: summary } },
       metadata: {
         name: contact.name || '', company: contact.company || '', email: contact.email || '',
-        phone: contact.phone || '', license: contact.license || '', username: contact.username || '',
+        phone: contact.phone || '',
         tier, term, listings_count: String(n),
-        setup_cents: String(setupToday),
+        setup_cents: String(setupCharge),
         setup_regular_cents: String(setupReg),
         per_call_cents: String(perCallCents(tier)),
         metered: hasMeter(tier) ? '1' : '0',
+        promo: promoCode, founder: isFounder ? '1' : '0',
         listings: JSON.stringify(listings).slice(0, 480),
       },
       success_url: 'https://onevoice.onesocial.ai/welcome?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url:  'https://oneworldlabs.ai/onevoice/',
+      cancel_url:  'https://oneworldlabs.ai/onevoice/get-started/',
     });
 
     // AUTOMATION (#49): stash the FULL listings payload in KV keyed by the checkout
