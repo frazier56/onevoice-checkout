@@ -154,7 +154,7 @@ export default async function handler(req, res) {
 
     // 1) always alert the realtor
     const notify = await post(`${SMS_HUB_URL}?k=${KEY}`, {
-      action: 'notify-agent', agentPhone, callerName, score, scoreReason, street,
+      action: 'notify-agent', agentPhone, callerName, score, scoreReason, street, showingTime: booked ? showingTime : '',
     });
     out.steps.notifyAgent = { ok: notify.data?.ok, status: notify.status };
 

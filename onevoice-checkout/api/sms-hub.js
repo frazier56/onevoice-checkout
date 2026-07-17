@@ -78,8 +78,8 @@ export default async function handler(req, res) {
 
   try {
     if (action === 'notify-agent') {
-      const street = clip(q.street, 80), caller = clip(q.callerName, 60) || 'A caller', score = clip(q.score, 10), reason = clip(q.scoreReason, 200);
-      const msg = `OneVoice: ${caller} just called about ${street || 'your listing'}.` + (score ? ` Lead score ${score}/10.` : '') + (reason ? ` ${reason}.` : '') + ` Call them back now. Full details are in your OneVoice dashboard.`;
+      const street = clip(q.street, 80), caller = clip(q.callerName, 60) || 'A caller', score = clip(q.score, 10), reason = clip(q.scoreReason, 200), showing = clip(q.showingTime, 60);
+      const msg = `OneVoice: ${caller} just called about ${street || 'your listing'}.` + (score ? ` Lead score ${score}/10.` : '') + (reason ? ` ${reason}.` : '') + (showing ? ` Showing booked for ${showing} - confirm with the buyer.` : '') + ` Call them back now. Full details are in your OneVoice dashboard.`;
       const r = await sendSMS(q.agentPhone, 'Agent', msg);
       return res.status(200).json({ action, ok: r.ok, from: FROM, r, msg });
     }
