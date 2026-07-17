@@ -96,17 +96,69 @@ export async function getOrderListings(sessionId, metadataListings) {
 
 function field(v) { return (v === undefined || v === null) ? '' : String(v).trim(); }
 
+// ---- Path B identity baking + anti-lead-leak sanitation (P0, Jul 17) ------------
+// The customValues WRITE 401s (agency + location token both), so {{custom_values.*}}
+// chips render BLANK at call time on provisioned agents. Path B: bake the identity
+// values into each cloned agent's prompt/greeting as LITERAL text at clone time.
+// The webhook's best-effort CV write stays as belt-and-braces for the workflow.
+
+/** Identity values for one listing's agent. Source = checkout/form data — NEVER the
+ *  scraped/pasted listing text (that's the original agent = lead leak). */
+export function identityFromOrder(order = {}, listing = {}) {
+  const name = field(order.name);
+  return {
+    displayName: field(listing.assistant || order.assistant) || 'Ava',
+    realtorName: name,
+    businessName: field(order.company) || name,
+    realtorPhone: field(order.phone),
+    address: field(listing.address) || shortLabelFromDetails(field(listing.details)),
+  };
+}
+
+const chipRe = (frag) => new RegExp('\\{\\{\\s*custom_values\\.' + frag + '\\s*\\}\\}', 'g');
+
+/** Replace identity {{custom_values.*}} chips with literals so a blank custom value
+ *  can never be spoken. listing_details is handled by injectListing (literal block). */
+export function bakeIdentity(text, id = {}) {
+  return String(text || '')
+    .replace(chipRe('agent_display_name'), id.displayName || 'Ava')
+    .replace(chipRe('realtor_name'), id.realtorName || 'the listing agent')
+    .replace(chipRe('agent_business_name'), id.businessName || id.realtorName || 'the team')
+    .replace(chipRe('realtor_phone'), id.realtorPhone || '')
+    .replace(chipRe('listing_address'), id.address || 'the listing');
+}
+
+/** ANTI-LEAD-LEAK: strip the ORIGINAL listing agent / brokerage / phone / email from
+ *  pasted or scraped listing text so it can never be spoken. Conservative rules:
+ *  drop whole attribution lines, kill phone numbers + emails anywhere. */
+export function sanitizeListingText(text) {
+  let t = String(text || '');
+  t = t.split('\n').filter(l =>
+    !/(listed\s+by|listing\s+agent|listing\s+office|listing\s+provided|listing\s+courtesy|brokered\s+by|courtesy\s+of|presented\s+by|marketed\s+by|contact\s+(the\s+)?agent|agent\s+phone|office\s+phone|broker\s+of\s+record)/i.test(l)
+  ).join('\n');
+  // short brokerage-attribution lines (a features sentence is longer than 60 chars)
+  t = t.split('\n').filter(l =>
+    !(l.trim().length < 60 && /(realty|brokerage|realtors|sotheby|keller\s*williams|re\/max|remax|coldwell|century\s*21|berkshire|exp\s+realty|compass)\b/i.test(l))
+  ).join('\n');
+  t = t.replace(/(\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]?\d{4}/g, '')
+       .replace(/\b\d{10}\b/g, '')
+       .replace(/[\w.+\-]+@[\w\-]+\.[\w.]+/g, '')
+       .replace(/\b(call|text|email)( (or|us|me|at))*\s*(?=[.,;\n]|$)/gim, '');
+  return t.replace(/ {2,}/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 /** One listing -> the details block the agent speaks from. */
 export function buildListingBlock(listing = {}) {
   const addr = field(listing.address) || 'the listing';
   const price = field(listing.price);
   const beds = field(listing.beds), baths = field(listing.baths);
   const sqft = field(listing.sqft), year = field(listing.year);
-  const feats = field(listing.features || listing.details || listing.notes);
+  const feats = sanitizeListingText(field(listing.features || listing.details || listing.notes));
   const status = field(listing.status) || 'active';
   const lines = [
     `- Address: ${addr}${price ? ` · Price: $${price.replace(/^\$/, '')}` : ''}${beds || baths ? ` · ${beds || '?'} bd / ${baths || '?'} ba` : ''}${sqft ? ` / ${sqft} sq ft` : ''}${year ? `, built ${year}` : ''}`,
   ];
+  if (price) lines.push(`- Asking price: ${price.replace(/^\$/, '')} (AUTHORITATIVE - if any other price appears in this listing text, use THIS one)`);
   if (feats) lines.push(`- ${feats}`);
   lines.push(`- Status: ${status}`);
   return lines.join('\n');
@@ -118,7 +170,7 @@ export function buildListingBlock(listing = {}) {
  * marker isn't found, append a clearly-labeled block at the end. Also fills the
  * bracket placeholders if the template still carries them.
  */
-export function injectListing(templatePrompt, listing = {}) {
+export function injectListing(templatePrompt, listing = {}, identity = null) {
   let p = String(templatePrompt || '');
   const block = buildListingBlock(listing);
   const re = /(THE LISTING[^\n]*\n)([\s\S]*?)(?=\n\s*\n[A-Z][A-Z (]{3,}|\n[A-Z][A-Z (]{5,}:|$)/;
@@ -134,6 +186,7 @@ export function injectListing(templatePrompt, listing = {}) {
   }
   const price = field(listing.price);
   if (price) p = p.replaceAll('[PRICE]', price.replace(/^\$/, ''));
+  if (identity) p = bakeIdentity(p, identity);
   return p;
 }
 
@@ -260,7 +313,9 @@ export async function provisionAgentsForOrder({ locationId, order = {}, sessionI
 
   // #1: refresh the snapshot agent's prompt with listing #1's real details
   if (updateFirstAgent && template.id && basePrompt && listings[0]) {
-    const body = { locationId, agentName: agentNameFor(template, listings[0], 0), agentPrompt: injectListing(basePrompt, listings[0]) };
+    const id0 = identityFromOrder(order, listings[0]);
+    const body = { locationId, agentName: agentNameFor(template, listings[0], 0), agentPrompt: injectListing(basePrompt, listings[0], id0) };
+    if (template.welcomeMessage) body.welcomeMessage = bakeIdentity(template.welcomeMessage, id0);
     let u = await vai('PUT', `/voice-ai/agents/${template.id}`, { token: tok.token, body });
     if (!u.ok && (u.status === 404 || u.status === 405)) {
       u = await vai('PATCH', `/voice-ai/agents/${template.id}`, { token: tok.token, body });
@@ -271,11 +326,13 @@ export async function provisionAgentsForOrder({ locationId, order = {}, sessionI
   // #2..N: create an agent per listing
   for (let i = 1; i < listings.length; i++) {
     const listing = listings[i];
+    const idI = identityFromOrder(order, listing);
     const body = {
       locationId,
       agentName: agentNameFor(template, listing, i),
-      agentPrompt: injectListing(basePrompt, listing),
+      agentPrompt: injectListing(basePrompt, listing, idI),
       ...settings,
+      ...(settings.welcomeMessage ? { welcomeMessage: bakeIdentity(settings.welcomeMessage, idI) } : {}),
       // NO inboundNumber — number purchase/assignment is deferred (#47)
     };
     const c = await vai('POST', '/voice-ai/agents', { token: tok.token, body });
