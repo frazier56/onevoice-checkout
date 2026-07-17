@@ -22,7 +22,7 @@
    ============================================================================= */
 
 import Stripe from 'stripe';
-import { provisionAgentsForOrder } from '../lib/provisionAgents.js';
+import { provisionAgentsForOrder, sanitizeListingText, getOrderListings } from '../lib/provisionAgents.js';
 import {
   TERM, PLANS, planLabel, recurringCents, monthlyCents, perCallCents, hasMeter,
   METER_EVENT, METER_DISPLAY,
@@ -391,8 +391,8 @@ function listingDetailsText(listing = {}) {
   if (f(listing.beds) || f(listing.baths)) parts.push(`${f(listing.beds) || '?'} bed / ${f(listing.baths) || '?'} bath`);
   if (f(listing.sqft)) parts.push(`${f(listing.sqft)} sqft`);
   if (f(listing.year)) parts.push(`built ${f(listing.year)}`);
-  if (f(listing.price)) parts.push(`listed at $${f(listing.price).replace(/^\$/, '')}`);
-  const feats = f(listing.features || listing.details || listing.notes);
+  if (f(listing.price)) parts.push(`asking price $${f(listing.price).replace(/^\$/, '')} (AUTHORITATIVE - if any other price appears in the listing text, use THIS one)`);
+  const feats = sanitizeListingText(f(listing.features || listing.details || listing.notes));
   let s = parts.join(', ');
   if (feats) s += (s ? '. ' : '') + feats;
   return s;
@@ -423,6 +423,7 @@ async function setListingCustomValues(locationId, order) {
     { name: 'Realtor Name',        keyFrag: 'realtor_name',        value: String(order.name || '').trim() },
     { name: 'Agent Business Name', keyFrag: 'agent_business_name', value: String(order.company || order.name || '').trim() },
     { name: 'Listing Address',     keyFrag: 'listing_address',     value: String(first.address || '').trim() },
+    { name: 'Realtor Phone',       keyFrag: 'realtor_phone',       value: String(order.phone || '').trim() },
     { name: 'Listing Details',     keyFrag: 'listing_details',     value: listingDetailsText(first) },
     { name: 'plan_tier',           keyFrag: 'plan_tier',           value: tier },
   ];
@@ -521,7 +522,7 @@ function buildWelcomeEmailHtml(v) {
         </table>
       </td></tr>
       <tr><td style="padding:18px 22px 10px;">
-        <p style="font-size:14px;line-height:1.6;color:#5a6677;margin:0;">Questions? Reply to this email, call us at (855) 770-0200, or reach <a href="mailto:support.onevoice@onesocial.ai" style="color:#0B8C80;font-weight:600;">support.onevoice@onesocial.ai</a>. Welcome aboard.</p>
+        <p style="font-size:14px;line-height:1.6;color:#5a6677;margin:0;">Questions? Reply to this email, call us at (855) 770-0200, or reach <a href="mailto:support@oneworldlabs.ai" style="color:#0B8C80;font-weight:600;">support@oneworldlabs.ai</a>. Welcome aboard.</p>
       </td></tr>
       <tr><td align="center" style="padding:22px 24px;border-top:1px solid #ece8dd;">
         <p style="font-size:12px;color:#8a93a3;line-height:1.7;margin:0;">OneVoice, a OneSocial company &middot; OneSocial AI, LLC<br>1111b S Governors Ave, Dover, DE 19904</p>
@@ -694,6 +695,9 @@ export default async function handler(req, res) {
     const tier = m.tier || 'basic', term = m.term || 'monthly';
     const count = parseInt(m.listings_count || m.listings || '1') || 1;
     let listings = []; try { listings = JSON.parse(m.listings || '[]'); } catch { listings = []; }
+    // FULL listings from KV — metadata clips the JSON at 480 chars, which any real
+    // listing paste exceeds (truncated JSON -> parse fail -> [] -> blank address/CVs).
+    try { const full = await getOrderListings(s.id, listings); if (full.listings.length) listings = full.listings; } catch { /* metadata fallback stands */ }
     const order = {
       email: s.customer_details?.email || m.email || '', name: m.name || s.customer_details?.name || '',
       phone: m.phone || s.customer_details?.phone || '', company: m.company || '', username: m.username || '',

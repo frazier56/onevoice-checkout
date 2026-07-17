@@ -27,7 +27,7 @@ const FOUNDER_EMAIL = process.env.GHL_FOUNDER_EMAIL || 'founder@onesocial.ai';
 const HOME_URL = 'https://onevoice.onesocial.ai/';
 const LOGIN_URL = process.env.GHL_LOGIN_URL || 'https://app.gohighlevel.com/';
 const SUPPORT_LINE = '(855) 770-0200';
-const SUPPORT_EMAIL = 'support.onevoice@onesocial.ai';
+const SUPPORT_EMAIL = 'support@oneworldlabs.ai';
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
