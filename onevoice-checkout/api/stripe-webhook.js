@@ -167,7 +167,14 @@ function tempPassword() {
   return pick(U, 3) + pick(L, 5) + pick(N, 3) + pick(S, 2);
 }
 
-// #40 CUSTOMER LOCKDOWN: permission set applied to every customer login user.
+// #40 + Jul17 CUSTOMER LOCKDOWN: role 'user' (NOT admin) + permission set applied to
+// every customer login user. Jul17 root cause of the fat sidebar: users were created as
+// ADMIN, which enables all builder modules regardless of the permission map below.
+// NOTE: settingsEnabled stays TRUE at provision time ON PURPOSE - the customer must buy
+// their phone number via Settings first (Get Your Phone Number is the first login step).
+// botService false = AI Agents hidden (agents run fine without customer access).
+// Sites/Reporting lingering in the sidebar despite funnels/websites/reporting=false is
+// suspected SaaS-Configurator plan features (agency-level), not user perms - verify in UI.
 // Keeps: dashboard, conversations, contacts, opportunities, calendars, phone,
 // settings (needed to buy their number) and AI agents (Deploy step). Hides the
 // builder: marketing, automation, sites, memberships, reputation, reporting,
@@ -175,7 +182,7 @@ function tempPassword() {
 const CUSTOMER_PERMISSIONS = {
   dashboardStatsEnabled: true, conversationsEnabled: true, contactsEnabled: true,
   opportunitiesEnabled: true, appointmentsEnabled: true, phoneCallEnabled: true,
-  settingsEnabled: true, botService: true, leadValueEnabled: true, tagsEnabled: true,
+  settingsEnabled: true, botService: false, leadValueEnabled: true, tagsEnabled: true,
   assignedDataOnly: false, bulkRequestsEnabled: false,
   campaignsEnabled: false, campaignsReadOnly: false,
   workflowsEnabled: false, workflowsReadOnly: false, triggersEnabled: false,
@@ -210,7 +217,7 @@ async function provisionFirstListing(order) {
   const pw = tempPassword();
   const usr = await ghlPost('/users/', {
     companyId, firstName, lastName, email: order.email, password: pw, phone: order.phone || '',
-    type: 'account', role: 'admin', locationIds: [locationId],
+    type: 'account', role: 'user', locationIds: [locationId],
     permissions: CUSTOMER_PERMISSIONS,
   });
   const userExists = !usr.ok && /already exists/i.test(usr.data?.message || JSON.stringify(usr.data || {}));
