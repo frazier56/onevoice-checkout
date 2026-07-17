@@ -158,7 +158,7 @@ export function buildListingBlock(listing = {}) {
   const lines = [
     `- Address: ${addr}${price ? ` · Price: $${price.replace(/^\$/, '')}` : ''}${beds || baths ? ` · ${beds || '?'} bd / ${baths || '?'} ba` : ''}${sqft ? ` / ${sqft} sq ft` : ''}${year ? `, built ${year}` : ''}`,
   ];
-  if (price) lines.push(`- Asking price: ${price.replace(/^\$/, '')} (AUTHORITATIVE - if any other price appears in this listing text, use THIS one)`);
+  if (price) lines.push(`- Asking price: $${price.replace(/^\$/, '')} (AUTHORITATIVE - if any other price appears in this listing text, use THIS one)`);
   if (feats) lines.push(`- ${feats}`);
   lines.push(`- Status: ${status}`);
   return lines.join('\n');
