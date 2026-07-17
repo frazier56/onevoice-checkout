@@ -133,16 +133,29 @@ export default async function handler(req, res) {
 
   const out = { ok: false, action, sms: null, email: null };
   try {
-    // the caller becomes a contact in the DEMO location (Ava's own sub-account)
+    // The caller becomes a contact in the DEMO location (Ava's own sub-account).
+    // KEY BY PHONE (callers are phone-identified; email-first dedupe can match a
+    // different contact whose stored phone breaks the SMS send - seen Jul 17).
+    const baseBody = {
+      locationId: DEMO_LOCATION_ID, firstName: firstName(name), name: name || 'Demo caller',
+      source: 'Ava live demo', tags: ['ava-demo-caller', isAgent ? 'realtor' : 'service-business'],
+    };
     const up = await ghl('POST', '/contacts/upsert', {
-      body: {
-        locationId: DEMO_LOCATION_ID, phone: phone || undefined, email: email || undefined,
-        firstName: firstName(name), name: name || 'Demo caller',
-        source: 'Ava live demo', tags: ['ava-demo-caller', isAgent ? 'realtor' : 'service-business'],
-      },
+      body: phone ? { ...baseBody, phone } : { ...baseBody, email },
     });
     const contactId = up.data?.contact?.id || up.data?.id || '';
     if (!contactId) return res.status(200).json({ ...out, message: 'contact upsert failed: ' + (up.data?.message || up.status) });
+
+    // attach the email to the phone-keyed contact for the email send; if the email
+    // belongs to ANOTHER contact (409/400), fall back to an email-keyed upsert.
+    let emailContactId = contactId;
+    if (phone && email) {
+      const put = await ghl('PUT', `/contacts/${contactId}`, { body: { email } });
+      if (!put.ok) {
+        const upE = await ghl('POST', '/contacts/upsert', { body: { ...baseBody, email } });
+        emailContactId = upE.data?.contact?.id || upE.data?.id || contactId;
+      }
+    }
 
     // SMS send: contact-routed first (proven 201), explicit to/from retry as fallback
     async function sendSms(message) {
@@ -172,7 +185,7 @@ export default async function handler(req, res) {
       out.sms = await sendSms(sample.smsToCaller);
     }
     if (email) {
-      const body = { type: 'Email', contactId, subject: sample.subject, html: sample.html };
+      const body = { type: 'Email', contactId: emailContactId, subject: sample.subject, html: sample.html };
       if (process.env.GHL_EMAIL_FROM) body.emailFrom = process.env.GHL_EMAIL_FROM;
       const r = await ghl('POST', '/conversations/messages', { body, version: V_CONV });
       out.email = { ok: r.ok, status: r.status };
