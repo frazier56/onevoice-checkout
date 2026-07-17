@@ -148,7 +148,7 @@ export default async function handler(req, res) {
       // get-started link, after they say they're interested
       if (phone) {
         const r = await ghl('POST', '/conversations/messages', {
-          body: { type: 'SMS', contactId, message: `Here's that link — everything you just experienced, answering YOUR calls 24/7: ${GET_STARTED_URL}  Questions anytime: (855) 770-0200. — Ava at OneVoice` },
+          body: { type: 'SMS', contactId, toNumber: phone, ...(process.env.DEMO_SMS_FROM ? { fromNumber: process.env.DEMO_SMS_FROM } : {}), message: `Here's that link — everything you just experienced, answering YOUR calls 24/7: ${GET_STARTED_URL}  Questions anytime: (855) 770-0200. — Ava at OneVoice` },
           version: V_CONV,
         });
         out.sms = { ok: r.ok, status: r.status };
@@ -161,7 +161,7 @@ export default async function handler(req, res) {
     const sample = isAgent ? realtorSample({ name, address, price }) : serviceSample({ name });
     if (phone) {
       const r = await ghl('POST', '/conversations/messages', {
-        body: { type: 'SMS', contactId, message: sample.smsToCaller },
+        body: { type: 'SMS', contactId, toNumber: phone, ...(process.env.DEMO_SMS_FROM ? { fromNumber: process.env.DEMO_SMS_FROM } : {}), message: sample.smsToCaller },
         version: V_CONV,
       });
       out.sms = { ok: r.ok, status: r.status };
