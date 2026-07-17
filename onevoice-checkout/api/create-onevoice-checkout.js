@@ -18,7 +18,7 @@
 import Stripe from 'stripe';
 import { kvSet } from '../lib/kv.js';
 import {
-  TERM, planLabel, recurringCents, setupRegularCents, setupTodayCents,
+  TERM, planLabel, recurringCents, setupRegularCents, setupTodayCents, setupHasPromo,
   perCallCents, hasMeter, isSelfServe, SETUP_PROMO_LABEL,
 } from '../lib/pricing.js';
 
@@ -57,16 +57,20 @@ export default async function handler(req, res) {
     const recurring  = recurringCents(tier, n, term);
     const t          = TERM[term] || TERM.monthly;
     const label      = planLabel(tier);
+    const promo      = setupHasPromo(tier);   // Light = no promo (flat setup); Basic/Pro = 50% off
     const planName   = `OneVoice ${label} — ${n} listing${n > 1 ? 's' : ''}`;
     const trialEnd   = new Date(Date.now() + 7 * 24 * 3600 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
     const callLine   = perCallWord(tier);
+    const setupSentence = promo
+      ? `The one-time setup fee below is ${money(setupToday)} today (${SETUP_PROMO_LABEL}, normally ${money(setupReg)}) and is non-refundable. `
+      : `The one-time setup fee below is ${money(setupToday)} and is non-refundable. `;
 
     // Plan summary shown on the Stripe page (above the pay button)
     const summary =
       `${planName} · ${money(recurring)} billed ${t.word}. ${callLine}. ` +
       `7-day free trial — you are NOT charged for the plan today. ` +
       `After the trial, billing begins ${trialEnd}. ` +
-      `The one-time setup fee below is ${money(setupToday)} today (${SETUP_PROMO_LABEL}, normally ${money(setupReg)}) and is non-refundable. ` +
+      setupSentence +
       `Cancel anytime before ${trialEnd} and the plan won't bill.`;
 
     const session = await stripe.checkout.sessions.create({
@@ -83,8 +87,8 @@ export default async function handler(req, res) {
           currency: 'usd',
           unit_amount: setupToday,
           product_data: {
-            name: `OneVoice ${label} — one-time setup (${SETUP_PROMO_LABEL})`,
-            description: `Normally ${money(setupReg)}, ${money(setupToday)} today. Then a 7-day free trial on your plan; ${money(recurring)} ${t.word} starting ${trialEnd} (${callLine}). This charge is the one-time setup fee only.`,
+            name: promo ? `OneVoice ${label} — one-time setup (${SETUP_PROMO_LABEL})` : `OneVoice ${label} — one-time setup`,
+            description: (promo ? `Normally ${money(setupReg)}, ${money(setupToday)} today. ` : `${money(setupToday)} one-time. `) + `Then a 7-day free trial on your plan; ${money(recurring)} ${t.word} starting ${trialEnd} (${callLine}). This charge is the one-time setup fee only.`,
           },
         },
       }],
