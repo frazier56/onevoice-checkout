@@ -175,12 +175,15 @@ function tempPassword() {
 // botService false = AI Agents hidden (agents run fine without customer access).
 // Sites/Reporting lingering in the sidebar despite funnels/websites/reporting=false is
 // suspected SaaS-Configurator plan features (agency-level), not user perms - verify in UI.
-// Keeps: dashboard, conversations, contacts, opportunities, calendars, phone,
-// settings (needed to buy their number) and AI agents (Deploy step). Hides the
-// builder: marketing, automation, sites, memberships, reputation, reporting,
-// payments, social, blogs, communities, affiliate, content AI.
+// Jul17 (Lee): trim customer sidebar to the essentials only — Dashboard,
+// Conversations, Calendars, Opportunities (+ settings/phone kept ONLY so they can
+// buy their number during onboarding). Contacts now OFF too (leads still visible via
+// Opportunities + Conversations + the dashboard widget). Sites (funnels/websites) and
+// Reporting are already false below. NOTE: if Sites/Reporting still appear on a FRESH
+// provisioned account, they're coming from the snapshot's custom menu, not perms —
+// strip them in the snapshot. Launchpad has no user-perm toggle (GHL setup hub).
 const CUSTOMER_PERMISSIONS = {
-  dashboardStatsEnabled: true, conversationsEnabled: true, contactsEnabled: true,
+  dashboardStatsEnabled: true, conversationsEnabled: true, contactsEnabled: false,
   opportunitiesEnabled: true, appointmentsEnabled: true, phoneCallEnabled: true,
   settingsEnabled: true, botService: false, leadValueEnabled: true, tagsEnabled: true,
   assignedDataOnly: false, bulkRequestsEnabled: false,
