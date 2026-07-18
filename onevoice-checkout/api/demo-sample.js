@@ -48,7 +48,6 @@ function firstName(name) { return (String(name || '').trim().split(/\s+/)[0]) ||
 
 function realtorSample({ name, address, price }) {
   const addr = address || '412 Maple Street';
-  const prc = price ? `$${String(price).replace(/^\$/, '')}` : '$325,000';
   const smsToCaller =
     `OneVoice SAMPLE — this is the text YOU'D get after a real call about ${addr}:\n` +
     `New buyer lead: Jamie Carter, (555) 201-4477 · Lead score 8/10 (pre-approved, touring this week) · ` +
@@ -63,15 +62,15 @@ function realtorSample({ name, address, price }) {
 <tr><td style="padding:12px 16px;">
 <b>Caller:</b> Jamie Carter · (555) 201-4477 · jamie.sample@email.com<br>
 <b>Lead score:</b> <span style="color:#0B8C80;font-weight:800;">8 / 10 — call back fast</span><br>
-<b>Why:</b> Pre-approved, no agent yet, wants to tour this week. Serious buyer for ${esc(prc)}.<br>
+<b>Why:</b> Pre-approved, no agent yet, wants to tour this week. Serious, motivated buyer.<br>
 <b>Asked about:</b> price, backyard size, school-aged kids next steps (redirected per fair housing), earliest showing.<br>
 <b>Booked:</b> showing request Saturday 2:00 PM (calendar invite attached in a real recap).
 </td></tr></table>
 <h3 style="margin:18px 0 6px;">Full transcript (excerpt)</h3>
 <p style="font-size:13.5px;color:#3d4753;background:#fbfaf6;border:1px solid #ece8dd;border-radius:10px;padding:12px 14px;">
 <b>AI:</b> Thanks for calling about ${esc(addr)}! This is your assistant — are you calling to ask about the home or set up a time to see it?<br>
-<b>Jamie:</b> Both, actually. Is it still ${esc(prc)}?<br>
-<b>AI:</b> It is — listed at ${esc(prc)}. Are you already working with an agent, or buying on your own?<br>
+<b>Jamie:</b> Both, actually — is it still available?<br>
+<b>AI:</b> It is! Are you already working with an agent, or buying on your own?<br>
 <b>Jamie:</b> On my own, and I'm pre-approved.<br>
 <b>AI:</b> Perfect — I can get you in this weekend. Saturday at 2 work for you? …<br>
 <span style="color:#8a94a3;">(a real recap shows every word of the call)</span></p>
