@@ -37,29 +37,49 @@ export default async function handler(req, res) {
   if (!loc || !agentId) return res.status(400).json({ error: 'need loc + agentId' });
 
   const tok = await getLocationToken(loc);
-  if (!tok.ok) return res.status(200).json({ ok: false, step: 'token', reason: tok.reason });
+  // token candidates: OAuth location token, then the env demo-location PIT
+  // (the demo loc's OAuth install predates the voice-ai scope upgrade -> 401s).
+  const tokens = [];
+  if (tok.ok) tokens.push({ label: 'oauth', token: tok.token });
+  if (process.env.GHL_LOCATION_TOKEN) tokens.push({ label: 'env-pit', token: process.env.GHL_LOCATION_TOKEN });
+  if (!tokens.length) return res.status(200).json({ ok: false, step: 'token', reason: tok.reason });
 
   const body = { locationId: loc };
   if (b.prompt) body.agentPrompt = String(b.prompt);
   if (b.welcomeMessage) body.welcomeMessage = String(b.welcomeMessage);
   // append mode: server-side read-modify-write (idempotent via marker check)
+  // pick the first token that can READ the agent; remember it for the write
+  let useTok = null, cur = null;
+  for (const t of tokens) {
+    cur = await vai('GET', `/voice-ai/agents/${agentId}?locationId=${encodeURIComponent(loc)}`, t.token);
+    if (cur.ok) { useTok = t; break; }
+  }
+  if (!useTok) return res.status(200).json({ ok: false, step: 'read-current', status: cur ? cur.status : 0, tried: tokens.map(t => t.label) });
+  const curAgent = cur.data?.agent || cur.data || {};
+  if (b.read) {
+    return res.status(200).json({ ok: true, via: useTok.label, agentName: curAgent.agentName || '', promptLen: String(curAgent.agentPrompt || '').length, agentPrompt: String(curAgent.agentPrompt || ''), welcomeMessage: String(curAgent.welcomeMessage || '') });
+  }
   if (!body.agentPrompt && b.appendPrompt) {
-    const cur = await vai('GET', `/voice-ai/agents/${agentId}?locationId=${encodeURIComponent(loc)}`, tok.token);
-    const curPrompt = String((cur.data?.agent || cur.data || {}).agentPrompt || '');
-    if (!cur.ok || !curPrompt) return res.status(200).json({ ok: false, step: 'read-current', status: cur.status });
+    const curPrompt = String(curAgent.agentPrompt || '');
+    if (!curPrompt) return res.status(200).json({ ok: false, step: 'read-current-empty' });
     const marker = String(b.marker || String(b.appendPrompt).slice(0, 40));
     if (curPrompt.includes(marker)) return res.status(200).json({ ok: true, skipped: 'marker already present', promptLen: curPrompt.length });
     body.agentPrompt = curPrompt + '\n\n' + String(b.appendPrompt);
   }
   if (!body.agentPrompt && !body.welcomeMessage) return res.status(400).json({ error: 'nothing to apply' });
 
-  let u = await vai('PUT', `/voice-ai/agents/${agentId}`, tok.token, body);
+  const wtok = (useTok || tokens[0]).token;
+  let u = await vai('PUT', `/voice-ai/agents/${agentId}`, wtok, body);
   if (!u.ok && (u.status === 404 || u.status === 405)) {
-    u = await vai('PATCH', `/voice-ai/agents/${agentId}`, tok.token, body);
+    u = await vai('PATCH', `/voice-ai/agents/${agentId}`, wtok, body);
+  }
+  if (!u.ok && u.status === 401 && tokens.length > 1) {
+    const alt = tokens.find(t => t !== useTok);
+    if (alt) u = await vai('PUT', `/voice-ai/agents/${agentId}`, alt.token, body);
   }
 
   // readback verify
-  const g = await vai('GET', `/voice-ai/agents/${agentId}?locationId=${encodeURIComponent(loc)}`, tok.token);
+  const g = await vai('GET', `/voice-ai/agents/${agentId}?locationId=${encodeURIComponent(loc)}`, wtok);
   const agent = g.data?.agent || g.data || {};
   const savedPrompt = String(agent.agentPrompt || '');
   return res.status(200).json({
