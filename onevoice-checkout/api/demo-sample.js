@@ -128,6 +128,30 @@ export default async function handler(req, res) {
   const price = clean(b.price, 20);
   const isAgent = String(b.isAgent).toLowerCase() !== 'false'; // default realtor flow
 
+  // --- DETERMINISTIC PHONE VALIDATION (offload digit-counting from the AI) -------
+  // Ava passes whatever number she heard as `number`; the SERVER counts the digits
+  // (LLMs can't reliably count) and tells her exactly what to say next. She must NOT
+  // use/send a number until this returns valid:true AND the caller confirms the readback.
+  if (action === 'checknum' || action === 'validate' || action === 'phone') {
+    let d = String(b.number || b.phone || b.digits || '').replace(/\D/g, '');
+    if (d.length === 11 && d[0] === '1') d = d.slice(1); // drop US country code
+    if (d.length === 10) {
+      const g = [d.slice(0,3), d.slice(3,6), d.slice(6,10)];
+      const spaced = d.split('').join(' ');
+      const formatted = `(${g[0]}) ${g[1]}-${g[2]}`;
+      return res.status(200).json({
+        ok: true, valid: true, count: 10, digits: d, formatted,
+        say: `The number is valid. Read it back to the caller slowly, digit by digit, exactly as: "${spaced}", then say the grouped version "${g[0]}, ${g[1]}, ${g[2]}" and ask "did I get that right?" WAIT for a clear yes. Do NOT send or use it until they confirm. If they say no, collect it again and re-check.`,
+      });
+    }
+    return res.status(200).json({
+      ok: true, valid: false, count: d.length, digits: d,
+      say: d.length === 0
+        ? `I didn't catch any digits. Warmly ask them to say all ten digits slowly, area code first. Do NOT proceed.`
+        : `That came to ${d.length} digit${d.length === 1 ? '' : 's'} — a US mobile number is exactly ten. Do NOT read it back as if it's right and do NOT ask "is that correct". Instead say warmly that it didn't come out to a full ten-digit number and ask them to say all ten again, slowly, start to finish, area code first. Then check it again.`,
+    });
+  }
+
   if (!phone && !email) return res.status(200).json({ ok: false, message: 'need a phone or email for the demo' });
 
   const out = { ok: false, action, sms: null, email: null };
