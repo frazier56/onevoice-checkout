@@ -42,6 +42,15 @@ export default async function handler(req, res) {
   const body = { locationId: loc };
   if (b.prompt) body.agentPrompt = String(b.prompt);
   if (b.welcomeMessage) body.welcomeMessage = String(b.welcomeMessage);
+  // append mode: server-side read-modify-write (idempotent via marker check)
+  if (!body.agentPrompt && b.appendPrompt) {
+    const cur = await vai('GET', `/voice-ai/agents/${agentId}?locationId=${encodeURIComponent(loc)}`, tok.token);
+    const curPrompt = String((cur.data?.agent || cur.data || {}).agentPrompt || '');
+    if (!cur.ok || !curPrompt) return res.status(200).json({ ok: false, step: 'read-current', status: cur.status });
+    const marker = String(b.marker || String(b.appendPrompt).slice(0, 40));
+    if (curPrompt.includes(marker)) return res.status(200).json({ ok: true, skipped: 'marker already present', promptLen: curPrompt.length });
+    body.agentPrompt = curPrompt + '\n\n' + String(b.appendPrompt);
+  }
   if (!body.agentPrompt && !body.welcomeMessage) return res.status(400).json({ error: 'nothing to apply' });
 
   let u = await vai('PUT', `/voice-ai/agents/${agentId}`, tok.token, body);
