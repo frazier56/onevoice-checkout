@@ -6,9 +6,9 @@
    change them HERE and every surface stays in sync.
 
    LOCKED MODEL (Lee, Jul 16):
-     Light  — $99/mo PER LISTING · $1.00/call metered · setup reg $149
-     Basic  — $297/mo up to 4 listings · +$99/mo each extra · $0.99/call · setup reg $249
-     Pro    — $497/mo for 5 listings · +$99/mo each extra · UNLIMITED calls (no meter) · setup reg $349
+     Lite   — $99/mo PER LISTING · $0.99/call metered · setup reg $149
+     Basic  — $297/mo up to 4 listings · +$99/mo each extra · $0.69/call · setup reg $249
+     Pro    — $497/mo · +$99/mo each extra · $0.39/call metered · setup reg $449
      Enterprise — 6+ / brokers · custom · NO self-serve checkout
    Setup fee = ONE-TIME per ACCOUNT (not per listing). Summer promo = 50% off today.
    Term discounts (quarter -25% / annual -35%) apply to the MONTHLY flat price ONLY,
@@ -17,9 +17,9 @@
 
 // Monthly flat plan price + extra-listing rules (cents)
 export const PLANS = {
-  light: { base: 9900,  extra: 9900, included: 1, perCall: 99,  label: 'Light', unlimited: false },
-  basic: { base: 29700, extra: 9900, included: 4, perCall: 99,  label: 'Basic', unlimited: false },
-  pro:   { base: 49700, extra: 9900, included: 6, perCall: 0,   label: 'Pro',   unlimited: true  },
+  light: { base: 9900,  extra: 9900, included: 1, perCall: 99,  label: 'Lite',  unlimited: false },
+  basic: { base: 29700, extra: 9900, included: 4, perCall: 69,  label: 'Basic', unlimited: false },
+  pro:   { base: 49700, extra: 9900, included: 6, perCall: 39,  label: 'Pro',   unlimited: false },
 };
 
 // One-time setup fee (REGULAR, cents) per tier — NOT per listing.
