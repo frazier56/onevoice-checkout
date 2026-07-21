@@ -65,18 +65,22 @@ export default async function handler(req, res) {
     const recurring  = recurringCents(tier, n, term);
     const t          = TERM[term] || TERM.monthly;
     const label      = planLabel(tier);
-    const promo      = setupHasPromo(tier);   // Light = no promo (flat setup); Basic/Pro = 50% off
     const promoCode  = String((req.body && req.body.promo) || '').trim();
     const isFounder  = ['founder100','founder50','foundertest'].includes(promoCode.toLowerCase()); // exact founder codes -> $1 today, plan on trial
-    const setupCharge= isFounder ? 100 : setupToday;         // amount actually charged today
+    // SECRET, non-advertised 50%-off-setup code (Basic/Pro only). Lee hands this out
+    // selectively — it is NOT shown anywhere on the site. To change the code, edit the
+    // list below (keep them lowercase). Light is never discounted.
+    const isSetup50  = ['setup50','half50'].includes(promoCode.toLowerCase()) && ['basic','pro'].includes(String(tier).toLowerCase());
+    const promo      = isSetup50;             // whether a setup discount is applied THIS checkout (drives wording)
+    const setupCharge= isFounder ? 100 : (isSetup50 ? Math.round(setupReg * 0.5) : setupToday); // amount actually charged today
     const planName   = `OneVoice ${label} — ${n} listing${n > 1 ? 's' : ''}`;
     const trialEnd   = new Date(Date.now() + 7 * 24 * 3600 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
     const callLine   = perCallWord(tier);
     const setupSentence = isFounder
       ? `Founder test — ${money(setupCharge)} today, and the plan won't bill (cancel before the trial ends). `
-      : promo
-        ? `The one-time setup fee below is ${money(setupToday)} today (${SETUP_PROMO_LABEL}, normally ${money(setupReg)}) and is non-refundable. `
-        : `The one-time setup fee below is ${money(setupToday)} and is non-refundable. `;
+      : isSetup50
+        ? `The one-time setup fee below is ${money(setupCharge)} today (50% off, normally ${money(setupReg)}) and is non-refundable. `
+        : `The one-time setup fee below is ${money(setupCharge)} and is non-refundable. `;
 
     // Plan summary shown on the Stripe page (above the pay button)
     const summary =
@@ -101,7 +105,7 @@ export default async function handler(req, res) {
           unit_amount: setupCharge,
           product_data: {
             name: isFounder ? `OneVoice ${label} — founder test setup` : (promo ? `OneVoice ${label} — one-time setup (${SETUP_PROMO_LABEL})` : `OneVoice ${label} — one-time setup`),
-            description: isFounder ? `${money(setupCharge)} founder test. Then a 7-day free trial; the plan won't bill — cancel before it ends.` : ((promo ? `Normally ${money(setupReg)}, ${money(setupToday)} today. ` : `${money(setupToday)} one-time. `) + `Then a 7-day free trial on your plan; ${money(recurring)} ${t.word} starting ${trialEnd} (${callLine}). This charge is the one-time setup fee only.`),
+            description: isFounder ? `${money(setupCharge)} founder test. Then a 7-day free trial; the plan won't bill — cancel before it ends.` : ((promo ? `Normally ${money(setupReg)}, ${money(setupCharge)} today. ` : `${money(setupCharge)} one-time. `) + `Then a 7-day free trial on your plan; ${money(recurring)} ${t.word} starting ${trialEnd} (${callLine}). This charge is the one-time setup fee only.`),
           },
         },
       }],
