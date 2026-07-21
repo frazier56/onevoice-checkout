@@ -26,7 +26,11 @@ export const PLANS = {
 export const SETUP = { light: 14900, basic: 24900, pro: 34900 };
 export const SETUP_PROMO = 0.5;            // 50% off, summer / limited-time — applies to Basic + Pro only
 export const SETUP_PROMO_LABEL = '50% off — limited-time summer offer';
-export const SETUP_PROMO_TIERS = ['basic', 'pro']; // Light setup is NOT discounted (flat $149)
+// AUTO promo DISABLED (Jul 20 2026, Lee): full setup is charged by default on ALL tiers.
+// The 50% off is now granted ONLY via the secret, non-advertised promo code (see
+// create-onevoice-checkout.js -> isSetup50). To restore the automatic summer promo,
+// put ['basic', 'pro'] back here.
+export const SETUP_PROMO_TIERS = [];
 
 export const TERM = {
   monthly: { months: 1,  off: 0,    word: 'per month',      label: 'Monthly',                     interval: 'month', interval_count: 1 },
