@@ -23,7 +23,7 @@ export const PLANS = {
 };
 
 // One-time setup fee (REGULAR, cents) per tier — NOT per listing.
-export const SETUP = { light: 14900, basic: 24900, pro: 34900 };
+export const SETUP = { light: 14900, basic: 24900, pro: 44900 };
 export const SETUP_PROMO = 0.5;            // 50% off, summer / limited-time — applies to Basic + Pro only
 export const SETUP_PROMO_LABEL = '50% off — limited-time summer offer';
 // AUTO promo DISABLED (Jul 20 2026, Lee): full setup is charged by default on ALL tiers.
